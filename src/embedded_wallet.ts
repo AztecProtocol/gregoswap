@@ -19,6 +19,7 @@ import { AztecAddress } from '@aztec/stdlib/aztec-address';
 import { getContractInstanceFromInstantiationParams } from '@aztec/stdlib/contract';
 import type { TxSimulationResult } from '@aztec/stdlib/tx';
 import type { DefaultAccountEntrypointOptions } from '@aztec/entrypoints/account';
+import { deriveSigningKey } from '@aztec/stdlib/keys';
 
 /**
  * Data for generating an account.
@@ -88,16 +89,23 @@ export class EmbeddedWallet extends BaseWallet {
     } else if (this.accounts.has(address.toString())) {
       account = this.accounts.get(address.toString());
     } else {
-      const accountManager = await this.createAccount();
-      account = await accountManager.getAccount();
-      this.accounts.set(accountManager.address.toString(), account);
+      throw new Error(`Account with address ${address.toString()} not found in wallet`);
     }
 
     return account;
   }
 
   async getAccounts() {
-    return Promise.resolve(Array.from(this.accounts.values()).map(acc => ({ item: acc.getAddress(), alias: '' })));
+    if (this.accounts.size === 0) {
+      const accountManager = await this.createAccount({
+        salt: Fr.ZERO,
+        secret: Fr.ZERO,
+        contract: new SchnorrAccountContract(deriveSigningKey(Fr.ZERO)),
+      });
+      const account = await accountManager.getAccount();
+      this.accounts.set(accountManager.address.toString(), account);
+    }
+    return Array.from(this.accounts.values()).map(acc => ({ item: acc.getAddress(), alias: '' }));
   }
 
   private async getFakeAccountDataFor(address: AztecAddress) {

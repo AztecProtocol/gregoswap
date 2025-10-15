@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
 import { AztecAddress, BatchCall } from '@aztec/aztec.js';
 import { TokenContract } from '@aztec/noir-contracts.js/Token';
 import { AMMContract } from '@aztec/noir-contracts.js/AMM';
@@ -35,13 +35,22 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
   const [amm, setAmm] = useState<AMMContract | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const initialized = useRef(false);
 
   useEffect(() => {
+    // Prevent double initialization in StrictMode
+    if (initialized.current) {
+      return;
+    }
+
     async function initializeContracts() {
       if (walletLoading || !wallet) {
         setIsLoading(walletLoading);
         return;
       }
+
+      // Mark as initialized only after wallet is ready
+      initialized.current = true;
 
       try {
         setIsLoading(true);
@@ -59,12 +68,17 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         console.log('GregoCoinPremium:', gregoCoinPremiumAddress);
         console.log('AMM:', AMMAddress);
 
-        const ammInstance = await node.getContract(AMMAddress);
-        const gregoCoinInstance = await node.getContract(gregoCoinAddress);
-        const gregoCoinPremiumInstance = await node.getContract(gregoCoinPremiumAddress);
-        await wallet.registerContract(ammInstance, AMMContractArtifact);
-        await wallet.registerContract(gregoCoinInstance, TokenContractArtifact);
-        await wallet.registerContract(gregoCoinPremiumInstance, TokenContractArtifact);
+        const [ammInstance, gregoCoinInstance, gregoCoinPremiumInstance] = await Promise.all([
+          node.getContract(AMMAddress),
+          node.getContract(gregoCoinAddress),
+          node.getContract(gregoCoinPremiumAddress),
+        ]);
+
+        await Promise.all([
+          wallet.registerContract(ammInstance, AMMContractArtifact),
+          wallet.registerContract(gregoCoinInstance, TokenContractArtifact),
+          wallet.registerContract(gregoCoinPremiumInstance, TokenContractArtifact),
+        ]);
 
         const gregoCoinContract = await TokenContract.at(gregoCoinAddress, wallet);
         const gregoCoinPremiumContract = await TokenContract.at(gregoCoinPremiumAddress, wallet);

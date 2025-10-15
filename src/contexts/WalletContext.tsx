@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
 import { AztecAddress, createAztecNodeClient, type AztecNode, type Wallet } from '@aztec/aztec.js';
 import { EmbeddedWallet } from '../embedded_wallet';
 import type { AMMContract } from '@aztec/noir-contracts.js/AMM';
@@ -31,8 +31,15 @@ export function WalletProvider({ children }: WalletProviderProps) {
   const [node, setNode] = useState<AztecNode | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const initialized = useRef(false);
 
   useEffect(() => {
+    // Prevent double initialization in StrictMode
+    if (initialized.current) {
+      return;
+    }
+    initialized.current = true;
+
     async function initializeWallet() {
       try {
         setIsLoading(true);
@@ -48,7 +55,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
         console.log('Connecting to Aztec node at:', nodeUrl);
         const aztecNode = createAztecNodeClient(nodeUrl);
         const embeddedWallet = await EmbeddedWallet.create(aztecNode);
-        const defaultAccountAddress = (await embeddedWallet.getAccounts())[0]?.item || (await AztecAddress.random());
+        const defaultAccountAddress = (await embeddedWallet.getAccounts())[0]?.item;
         setCurrentAddress(defaultAccountAddress);
         setNode(aztecNode);
         setWallet(embeddedWallet);
