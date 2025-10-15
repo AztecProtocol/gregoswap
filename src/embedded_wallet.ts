@@ -1,0 +1,152 @@
+import { getStubAccountContractArtifact, createStubAccount } from '@aztec/accounts/stub/lazy';
+import { SchnorrAccountContract } from '@aztec/accounts/schnorr/lazy';
+
+import {
+  type Account,
+  type AccountContract,
+  BaseWallet,
+  SignerlessAccount,
+  type SimulateInteractionOptions,
+  createAztecNodeClient,
+  type AztecNode,
+  AccountManager,
+} from '@aztec/aztec.js';
+import { getPXEConfig, type PXEConfig } from '@aztec/pxe/config';
+import { createPXE, PXE } from '@aztec/pxe/client/lazy';
+import { ExecutionPayload, mergeExecutionPayloads } from '@aztec/entrypoints/payload';
+import { Fr, GrumpkinScalar } from '@aztec/foundation/fields';
+import { AztecAddress } from '@aztec/stdlib/aztec-address';
+import { getContractInstanceFromInstantiationParams } from '@aztec/stdlib/contract';
+import type { TxSimulationResult } from '@aztec/stdlib/tx';
+import type { DefaultAccountEntrypointOptions } from '@aztec/entrypoints/account';
+
+/**
+ * Data for generating an account.
+ */
+export interface AccountData {
+  /**
+   * Secret to derive the keys for the account.
+   */
+  secret: Fr;
+  /**
+   * Contract address salt.
+   */
+  salt: Fr;
+  /**
+   * Contract that backs the account.
+   */
+  contract: AccountContract;
+}
+
+export class EmbeddedWallet extends BaseWallet {
+  protected accounts: Map<string, Account> = new Map();
+
+  constructor(pxe: PXE, aztecNode: AztecNode) {
+    super(pxe, aztecNode);
+  }
+
+  static async create(aztecNode: AztecNode) {
+    const l1Contracts = await aztecNode.getL1ContractAddresses();
+    const rollupAddress = l1Contracts.rollupAddress;
+
+    const config = getPXEConfig();
+    config.dataDirectory = `pxe-${rollupAddress}`;
+    config.proverEnabled = true;
+    const configWithContracts = {
+      ...config,
+      l1Contracts,
+    } as PXEConfig;
+
+    const pxe = await createPXE(aztecNode, configWithContracts);
+    return new EmbeddedWallet(pxe, aztecNode);
+  }
+
+  private async createAccount(accountData?: AccountData): Promise<AccountManager> {
+    // Generate random values if not provided
+    const secret = accountData?.secret ?? Fr.random();
+    const salt = accountData?.salt ?? Fr.random();
+    // Use SchnorrAccountContract if not provided
+    const contract = accountData?.contract ?? new SchnorrAccountContract(GrumpkinScalar.random());
+
+    const accountManager = await AccountManager.create(this, secret, contract, salt);
+
+    const instance = accountManager.getInstance();
+    const artifact = await contract.getContractArtifact();
+
+    await this.registerContract(instance, artifact, secret);
+
+    this.accounts.set(accountManager.address.toString(), await accountManager.getAccount());
+
+    return accountManager;
+  }
+
+  protected async getAccountFromAddress(address: AztecAddress): Promise<Account> {
+    let account: Account | undefined;
+    if (address.equals(AztecAddress.ZERO)) {
+      const chainInfo = await this.getChainInfo();
+      account = new SignerlessAccount(chainInfo);
+    } else if (this.accounts.has(address.toString())) {
+      account = this.accounts.get(address.toString());
+    } else {
+      const accountManager = await this.createAccount();
+      account = await accountManager.getAccount();
+      this.accounts.set(accountManager.address.toString(), account);
+    }
+
+    return account;
+  }
+
+  async getAccounts() {
+    return Promise.resolve(Array.from(this.accounts.values()).map(acc => ({ item: acc.getAddress(), alias: '' })));
+  }
+
+  private async getFakeAccountDataFor(address: AztecAddress) {
+    const chainInfo = await this.getChainInfo();
+    const originalAccount = await this.getAccountFromAddress(address);
+    const originalAddress = await originalAccount.getCompleteAddress();
+    const { contractInstance } = await this.pxe.getContractMetadata(originalAddress.address);
+    if (!contractInstance) {
+      throw new Error(`No contract instance found for address: ${originalAddress.address}`);
+    }
+    const stubAccount = createStubAccount(originalAddress, chainInfo);
+    const StubAccountContractArtifact = await getStubAccountContractArtifact();
+    const instance = await getContractInstanceFromInstantiationParams(StubAccountContractArtifact, {
+      salt: Fr.random(),
+    });
+    return {
+      account: stubAccount,
+      instance,
+      artifact: StubAccountContractArtifact,
+    };
+  }
+
+  override async simulateTx(
+    executionPayload: ExecutionPayload,
+    opts: SimulateInteractionOptions,
+  ): Promise<TxSimulationResult> {
+    const feeOptions = opts.fee?.estimateGas
+      ? await this.getFeeOptionsForGasEstimation(opts.from, opts.fee)
+      : await this.getDefaultFeeOptions(opts.from, opts.fee);
+    const feeExecutionPayload = await feeOptions.walletFeePaymentMethod?.getExecutionPayload();
+    const executionOptions: DefaultAccountEntrypointOptions = {
+      txNonce: Fr.random(),
+      cancellable: this.cancellableTransactions,
+      feePaymentMethodOptions: feeOptions.accountFeePaymentMethodOptions,
+    };
+    const finalExecutionPayload = feeExecutionPayload
+      ? mergeExecutionPayloads([feeExecutionPayload, executionPayload])
+      : executionPayload;
+    const { account: fromAccount, instance, artifact } = await this.getFakeAccountDataFor(opts.from);
+    const txRequest = await fromAccount.createTxExecutionRequest(
+      finalExecutionPayload,
+      feeOptions.gasSettings,
+      executionOptions,
+    );
+    const contractOverrides = {
+      [opts.from.toString()]: { instance, artifact },
+    };
+    return this.pxe.simulateTx(txRequest, true /* simulatePublic */, true, true, {
+      contracts: contractOverrides,
+    });
+  }
+}

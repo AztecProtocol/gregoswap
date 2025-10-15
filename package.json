@@ -16,8 +16,13 @@
     "test": "playwright test"
   },
   "dependencies": {
+    "@aztec/accounts": "v3.0.0-nightly.20251015",
     "@aztec/aztec.js": "v3.0.0-nightly.20251015",
+    "@aztec/entrypoints": "v3.0.0-nightly.20251015",
     "@aztec/noir-contracts.js": "v3.0.0-nightly.20251015",
+    "@aztec/pxe": "v3.0.0-nightly.20251015",
+    "@aztec/stdlib": "v3.0.0-nightly.20251015",
+    "@aztec/foundation": "v3.0.0-nightly.20251015",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
     "@mui/icons-material": "^6.3.1",
@@ -30,7 +35,6 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@aztec/pxe": "v3.0.0-nightly.20251015",
     "@aztec/test-wallet": "v3.0.0-nightly.20251015",
     "@eslint/js": "^9.18.0",
     "@playwright/test": "1.49.0",

@@ -3,7 +3,6 @@ import react from '@vitejs/plugin-react-swc';
 import { PolyfillOptions, nodePolyfills } from 'vite-plugin-node-polyfills';
 import bundlesize from 'vite-plugin-bundlesize';
 
-
 // Unfortunate, but needed due to https://github.com/davidmyersdev/vite-plugin-node-polyfills/issues/81
 // Suspected to be because of the yarn workspace setup, but not sure
 const nodePolyfillsFix = (options?: PolyfillOptions | undefined): Plugin => {
@@ -31,6 +30,9 @@ export default defineConfig(({ mode }) => {
         'Cross-Origin-Opener-Policy': 'same-origin',
         'Cross-Origin-Embedder-Policy': 'require-corp',
       },
+    },
+    optimizeDeps: {
+      exclude: ['@aztec/noir-acvm_js', '@aztec/noir-noirc_abi'],
     },
     plugins: [
       react({ jsxImportSource: '@emotion/react' }),

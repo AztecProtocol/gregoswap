@@ -141,9 +141,10 @@ async function deployContracts(wallet: TestWallet, deployer: AztecAddress) {
 async function writeEnvFile(deploymentInfo) {
   const envFilePath = path.join(import.meta.dirname, '../.env');
   const envConfig = Object.entries({
-    GREGOCOIN_ADDRESS: deploymentInfo.gregoCoinAddress,
+    VITE_GREGOCOIN_ADDRESS: deploymentInfo.gregoCoinAddress,
     GREGOCOIN_PREMIUM_ADDRESS: deploymentInfo.gregoCoinPremiumAddress,
     AMM_ADDRESS: deploymentInfo.ammAddress,
+    AZTEC_NODE_URL,
   })
     .map(([key, value]) => `${key}=${value}`)
     .join('\n');

@@ -664,7 +664,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@aztec/accounts@npm:3.0.0-nightly.20251015":
+"@aztec/accounts@npm:3.0.0-nightly.20251015, @aztec/accounts@npm:v3.0.0-nightly.20251015":
   version: 3.0.0-nightly.20251015
   resolution: "@aztec/accounts@npm:3.0.0-nightly.20251015"
   dependencies:
@@ -772,7 +772,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@aztec/entrypoints@npm:3.0.0-nightly.20251015":
+"@aztec/entrypoints@npm:3.0.0-nightly.20251015, @aztec/entrypoints@npm:v3.0.0-nightly.20251015":
   version: 3.0.0-nightly.20251015
   resolution: "@aztec/entrypoints@npm:3.0.0-nightly.20251015"
   dependencies:
@@ -962,9 +962,12 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@aztec/playground@workspace:."
   dependencies:
+    "@aztec/accounts": "npm:v3.0.0-nightly.20251015"
     "@aztec/aztec.js": "npm:v3.0.0-nightly.20251015"
+    "@aztec/entrypoints": "npm:v3.0.0-nightly.20251015"
     "@aztec/noir-contracts.js": "npm:v3.0.0-nightly.20251015"
     "@aztec/pxe": "npm:v3.0.0-nightly.20251015"
+    "@aztec/stdlib": "npm:v3.0.0-nightly.20251015"
     "@aztec/test-wallet": "npm:v3.0.0-nightly.20251015"
     "@emotion/react": "npm:^11.14.0"
     "@emotion/styled": "npm:^11.14.0"
@@ -1061,7 +1064,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@aztec/stdlib@npm:3.0.0-nightly.20251015":
+"@aztec/stdlib@npm:3.0.0-nightly.20251015, @aztec/stdlib@npm:v3.0.0-nightly.20251015":
   version: 3.0.0-nightly.20251015
   resolution: "@aztec/stdlib@npm:3.0.0-nightly.20251015"
   dependencies:
