@@ -10,7 +10,35 @@ import {
 import type { TokenContract } from '@aztec/noir-contracts.js/Token';
 import type { AMMContract } from '@aztec/noir-contracts.js/AMM';
 import { useWallet } from './WalletContext';
-import type { TxProvingResult } from '@aztec/stdlib/tx';
+
+class BigDecimal {
+  // Configuration: private constants
+  static #DECIMALS = 18; // Number of decimals on all instances
+  static #SHIFT = 10n ** BigInt(BigDecimal.#DECIMALS); // Derived constant
+  static #fromBigInt = Symbol(); // Secret to allow construction with given #n value
+  #n; // the BigInt that will hold the BigDecimal's value multiplied by #SHIFT
+  constructor(value, convert?) {
+    if (value instanceof BigDecimal) return value;
+    if (convert === BigDecimal.#fromBigInt) {
+      // Can only be used within this class
+      this.#n = value;
+      return;
+    }
+    const [ints, decis] = String(value).split('.').concat('');
+    this.#n = BigInt(ints + decis.padEnd(BigDecimal.#DECIMALS, '0').slice(0, BigDecimal.#DECIMALS));
+  }
+  divide(num) {
+    return new BigDecimal((this.#n * BigDecimal.#SHIFT) / new BigDecimal(num).#n, BigDecimal.#fromBigInt);
+  }
+  toString() {
+    let s = this.#n
+      .toString()
+      .replace('-', '')
+      .padStart(BigDecimal.#DECIMALS + 1, '0');
+    s = (s.slice(0, -BigDecimal.#DECIMALS) + '.' + s.slice(-BigDecimal.#DECIMALS)).replace(/(\.0*|0+)$/, '');
+    return this.#n < 0 ? '-' + s : s;
+  }
+}
 
 interface ContractsContextType {
   gregoCoin: TokenContract | null;
@@ -79,22 +107,23 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
   const [amm, setAmm] = useState<AMMContract | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const initialized = useRef(false);
+  const lastWallet = useRef<Wallet | null>(null);
 
   useEffect(() => {
-    // Prevent double initialization in StrictMode
-    if (initialized.current) {
-      return;
-    }
-
     async function initializeContracts() {
       if (walletLoading || !wallet) {
         setIsLoading(walletLoading);
         return;
       }
 
-      // Mark as initialized only after wallet is ready
-      initialized.current = true;
+      // Reinitialize if wallet instance changed
+      if (lastWallet.current === wallet) {
+        // Same wallet instance, skip initialization
+        return;
+      }
+
+      lastWallet.current = wallet;
+      console.log('Wallet instance changed, reinitializing contracts');
 
       try {
         setIsLoading(true);
@@ -144,7 +173,8 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
       gregoCoinPremium.methods.balance_of_public(amm.address),
     ]);
     const [token0Reserve, token1Reserve] = await batchCall.simulate({ from: currentAddress });
-    return Number(token1Reserve / token0Reserve);
+    console.log(`Reserves - Token0: ${token0Reserve}, Token1: ${token1Reserve}`);
+    return parseFloat(new BigDecimal(token1Reserve).divide(new BigDecimal(token0Reserve)).toString());
   };
 
   const swap = useCallback(
@@ -159,8 +189,8 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         .swap_tokens_for_exact_tokens(
           tokenIn,
           tokenOut,
-          BigInt(Math.round(amountOut) * 1e18),
-          BigInt(Math.round(amountInMax) * 1e18),
+          BigInt(Math.round(amountOut)),
+          BigInt(Math.round(amountInMax)),
           authwitNonce,
         )
         .send({ from: currentAddress })

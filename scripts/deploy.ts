@@ -25,6 +25,8 @@ const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
 const PROVER_ENABLED = process.env.PROVER_ENABLED === 'false' ? false : true;
 const WRITE_ENV_FILE = process.env.WRITE_ENV_FILE === 'false' ? false : true;
 
+const MINT_TO = process.env.MINT_TO ? AztecAddress.fromString(process.env.MINT_TO) : undefined;
+
 const PXE_STORE_DIR = path.join(import.meta.dirname, '.pxe-store');
 
 const INITIAL_TOKEN_BALANCE = 1_000_000_000n;
@@ -137,6 +139,18 @@ async function deployContracts(wallet: TestWallet, deployer: AztecAddress) {
     )
     .with({ authWitnesses: [token0Authwit, token1Authwit] });
   await addLiquidityInteraction.send({ from: deployer, fee: { paymentMethod } }).wait({ timeout: 120 });
+
+  if (MINT_TO) {
+    await gregoCoin.methods
+      .mint_to_private(MINT_TO, INITIAL_TOKEN_BALANCE)
+      .send({ from: deployer, fee: { paymentMethod } })
+      .wait({ timeout: 120 });
+    await gregoCoinPremium.methods
+      .mint_to_private(MINT_TO, INITIAL_TOKEN_BALANCE)
+      .send({ from: deployer, fee: { paymentMethod } })
+      .wait({ timeout: 120 });
+    console.log(`Minted ${INITIAL_TOKEN_BALANCE} GRG and GRGP to ${MINT_TO.toString()}`);
+  }
 
   return {
     gregoCoinAddress: gregoCoin.address.toString(),

@@ -28,13 +28,16 @@ export function App() {
     getExchangeRate,
     swap,
   } = useContracts();
-  const { setCurrentAddress, isUsingEmbeddedWallet } = useWallet();
+  const { setCurrentAddress, isUsingEmbeddedWallet, currentAddress } = useWallet();
+
+  console.log('App state:', { isUsingEmbeddedWallet, currentAddress: currentAddress?.toString() });
   const [fromAmount, setFromAmount] = useState('');
   const [toAmount, setToAmount] = useState('');
   const [isFromActive, setIsFromActive] = useState(true);
   const [exchangeRate, setExchangeRate] = useState<number | undefined>(undefined);
   const [isLoadingRate, setIsLoadingRate] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [shouldExecuteSwap, setShouldExecuteSwap] = useState(false);
 
   useEffect(() => {
     async function fetchExchangeRate() {
@@ -69,6 +72,15 @@ export function App() {
       setFromAmount(calculatedFrom);
     }
   }, [exchangeRate, isFromActive, fromAmount, toAmount]);
+
+  // Execute swap after wallet switch when ready
+  useEffect(() => {
+    if (shouldExecuteSwap && currentAddress && !isUsingEmbeddedWallet && !contractsLoading) {
+      console.log('Executing swap after wallet switch');
+      setShouldExecuteSwap(false);
+      doSwap();
+    }
+  }, [shouldExecuteSwap, currentAddress, isUsingEmbeddedWallet, contractsLoading]);
 
   const handleFromChange = (value: string) => {
     setFromAmount(value);
@@ -109,11 +121,27 @@ export function App() {
   };
 
   const doSwap = async () => {
+    console.log('doSwap called');
+    console.log('doSwap params:', {
+      hasAmm: !!amm,
+      hasGregoCoin: !!gregoCoin,
+      hasGregoCoinPremium: !!gregoCoinPremium,
+      fromAmount,
+      toAmount,
+    });
+
     if (!amm || !gregoCoin || !gregoCoinPremium || !fromAmount || parseFloat(fromAmount) <= 0) {
       console.error('Cannot perform swap: Missing data or invalid amount');
       return;
     }
-    await swap(gregoCoin.address, gregoCoinPremium.address, parseFloat(toAmount), parseFloat(fromAmount) * 1.1);
+
+    console.log('Executing swap...');
+    try {
+      await swap(gregoCoin.address, gregoCoinPremium.address, parseFloat(toAmount), parseFloat(fromAmount) * 1.1);
+      console.log('Swap completed successfully');
+    } catch (error) {
+      console.error('Swap failed:', error);
+    }
   };
 
   return (
@@ -241,7 +269,7 @@ export function App() {
                 </Typography>
               ) : amm ? (
                 <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
-                  1 GC = {exchangeRate.toFixed(6)} GCP
+                  1 GC = {exchangeRate.toFixed(18)} GCP
                 </Typography>
               ) : (
                 <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
@@ -257,9 +285,12 @@ export function App() {
               size="large"
               disabled={!fromAmount || parseFloat(fromAmount) <= 0}
               onClick={() => {
+                console.log('Swap button clicked, isUsingEmbeddedWallet:', isUsingEmbeddedWallet);
                 if (isUsingEmbeddedWallet) {
+                  console.log('Opening modal to connect extension wallet');
                   setIsModalOpen(true);
                 } else {
+                  console.log('Calling doSwap');
                   doSwap();
                 }
               }}
@@ -300,6 +331,9 @@ export function App() {
         onAccountSelect={(address: AztecAddress) => {
           setCurrentAddress(address);
           console.log('Selected account:', address.toString());
+          console.log('Wallet switched - will execute swap when ready');
+          // Trigger swap execution via useEffect once state is ready
+          setShouldExecuteSwap(true);
         }}
       />
     </ThemeProvider>
