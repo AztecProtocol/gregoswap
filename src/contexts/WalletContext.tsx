@@ -1,6 +1,8 @@
-import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
-import { AztecAddress, createAztecNodeClient, type AztecNode, type Wallet } from '@aztec/aztec.js';
+import { createContext, useContext, useState, useEffect, useRef, type ReactNode, useCallback } from 'react';
+import { AztecAddress, createAztecNodeClient, type AztecNode, type Wallet, type ChainInfo } from '@aztec/aztec.js';
 import { EmbeddedWallet } from '../embedded_wallet';
+import { ExtensionWallet } from '../extension_wallet';
+import { set } from 'zod';
 
 interface WalletContextType {
   wallet: Wallet | null;
@@ -8,6 +10,9 @@ interface WalletContextType {
   currentAddress: AztecAddress | null;
   isLoading: boolean;
   error: string | null;
+  isUsingEmbeddedWallet: boolean;
+  connectWallet: (chainInfo: ChainInfo) => Promise<Wallet>;
+  setCurrentAddress: (address: AztecAddress) => void;
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
@@ -30,6 +35,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
   const [node, setNode] = useState<AztecNode | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isUsingEmbeddedWallet, setIsUsingEmbeddedWallet] = useState(true);
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -53,10 +59,11 @@ export function WalletProvider({ children }: WalletProviderProps) {
 
         console.log('Connecting to Aztec node at:', nodeUrl);
         const aztecNode = createAztecNodeClient(nodeUrl);
+        setNode(aztecNode);
+
         const embeddedWallet = await EmbeddedWallet.create(aztecNode);
         const defaultAccountAddress = (await embeddedWallet.getAccounts())[0]?.item;
         setCurrentAddress(defaultAccountAddress);
-        setNode(aztecNode);
         setWallet(embeddedWallet);
         setIsLoading(false);
       } catch (err) {
@@ -69,12 +76,26 @@ export function WalletProvider({ children }: WalletProviderProps) {
     initializeWallet();
   }, []);
 
+  const connectWallet = useCallback(async (chainInfo: ChainInfo): Promise<Wallet> => {
+    const appId = 'gregoswap';
+    const extensionWallet = ExtensionWallet.create(chainInfo, appId);
+
+    // Replace the current wallet with extension wallet
+    setWallet(extensionWallet);
+    setCurrentAddress(null);
+    setIsUsingEmbeddedWallet(false);
+    return extensionWallet;
+  }, []);
+
   const value: WalletContextType = {
     currentAddress,
     wallet,
     node,
     isLoading,
     error,
+    isUsingEmbeddedWallet,
+    connectWallet,
+    setCurrentAddress,
   };
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

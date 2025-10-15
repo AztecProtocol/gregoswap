@@ -1,8 +1,16 @@
-import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
-import { AztecAddress, BatchCall, Fr, getContractInstanceFromInstantiationParams } from '@aztec/aztec.js';
+import { createContext, useContext, useState, useEffect, useRef, type ReactNode, useCallback } from 'react';
+import {
+  AztecAddress,
+  BatchCall,
+  Fr,
+  getContractInstanceFromInstantiationParams,
+  ProvenTx,
+  type Wallet,
+} from '@aztec/aztec.js';
 import type { TokenContract } from '@aztec/noir-contracts.js/Token';
 import type { AMMContract } from '@aztec/noir-contracts.js/AMM';
 import { useWallet } from './WalletContext';
+import type { TxProvingResult } from '@aztec/stdlib/tx';
 
 interface ContractsContextType {
   gregoCoin: TokenContract | null;
@@ -12,6 +20,7 @@ interface ContractsContextType {
   error: string | null;
   // Utility methods
   getExchangeRate: () => Promise<number>;
+  swap: (tokenIn: AztecAddress, tokenOut: AztecAddress, amountOut: number, amountInMax: number) => Promise<void>;
 }
 
 const ContractsContext = createContext<ContractsContextType | undefined>(undefined);
@@ -28,8 +37,43 @@ interface ContractsProviderProps {
   children: ReactNode;
 }
 
+// Helper function to get contract registration batch calls
+async function getContractRegistrationBatch(wallet: Wallet) {
+  const { TokenContractArtifact } = await import('@aztec/noir-contracts.js/Token');
+  const { AMMContractArtifact } = await import('@aztec/noir-contracts.js/AMM');
+  const gregoCoinAddress = AztecAddress.fromString(import.meta.env.VITE_GREGOCOIN_ADDRESS);
+  const gregoCoinPremiumAddress = AztecAddress.fromString(import.meta.env.VITE_GREGOCOIN_PREMIUM_ADDRESS);
+  const liquidityTokenAddress = AztecAddress.fromString(import.meta.env.VITE_LIQUIDITY_TOKEN_ADDRESS);
+  const contractAddressSalt = Fr.fromString(import.meta.env.VITE_CONTRACT_ADDRESS_SALT);
+  const deployerAddress = AztecAddress.fromString(import.meta.env.VITE_DEPLOYER_ADDRESS);
+
+  const [ammInstance, gregoCoinInstance, gregoCoinPremiumInstance] = await Promise.all([
+    getContractInstanceFromInstantiationParams(AMMContractArtifact, {
+      salt: contractAddressSalt,
+      deployer: deployerAddress,
+      constructorArgs: [gregoCoinAddress, gregoCoinPremiumAddress, liquidityTokenAddress],
+    }),
+    getContractInstanceFromInstantiationParams(TokenContractArtifact, {
+      salt: contractAddressSalt,
+      deployer: deployerAddress,
+      constructorArgs: [deployerAddress, 'GregoCoin', 'GRG', 18],
+    }),
+    getContractInstanceFromInstantiationParams(TokenContractArtifact, {
+      salt: contractAddressSalt,
+      deployer: deployerAddress,
+      constructorArgs: [deployerAddress, 'GregoCoinPremium', 'GRGP', 18],
+    }),
+  ]);
+
+  return [
+    { name: 'registerContract' as const, args: [ammInstance, AMMContractArtifact, undefined] },
+    { name: 'registerContract', args: [gregoCoinInstance, TokenContractArtifact, undefined] },
+    { name: 'registerContract', args: [gregoCoinPremiumInstance, TokenContractArtifact, undefined] },
+  ];
+}
+
 export function ContractsProvider({ children }: ContractsProviderProps) {
-  const { wallet, node, currentAddress, isLoading: walletLoading } = useWallet();
+  const { wallet, currentAddress, isLoading: walletLoading } = useWallet();
   const [gregoCoin, setGregoCoin] = useState<TokenContract | null>(null);
   const [gregoCoinPremium, setGregoCoinPremium] = useState<TokenContract | null>(null);
   const [amm, setAmm] = useState<AMMContract | null>(null);
@@ -56,47 +100,19 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         setIsLoading(true);
         setError(null);
 
-        // Register and instantiate contracts
-        const { TokenContract, TokenContractArtifact } = await import('@aztec/noir-contracts.js/Token');
-        const { AMMContract, AMMContractArtifact } = await import('@aztec/noir-contracts.js/AMM');
+        console.log('Initializing contracts...');
+
+        // Register contracts using the helper function
+        // TODO: Remove 'as unknown as any' when correct types are exported from the library
+        const registrationBatch = await getContractRegistrationBatch(wallet);
+        await wallet.batch(registrationBatch as unknown as any);
+
+        // Instantiate contracts
+        const { TokenContract } = await import('@aztec/noir-contracts.js/Token');
+        const { AMMContract } = await import('@aztec/noir-contracts.js/AMM');
         const AMMAddress = AztecAddress.fromString(import.meta.env.VITE_AMM_ADDRESS);
         const gregoCoinAddress = AztecAddress.fromString(import.meta.env.VITE_GREGOCOIN_ADDRESS);
         const gregoCoinPremiumAddress = AztecAddress.fromString(import.meta.env.VITE_GREGOCOIN_PREMIUM_ADDRESS);
-        const liquidityTokenAddress = AztecAddress.fromString(import.meta.env.VITE_LIQUIDITY_TOKEN_ADDRESS);
-        const contractAddressSalt = Fr.fromString(import.meta.env.VITE_CONTRACT_ADDRESS_SALT);
-        const deployerAddress = AztecAddress.fromString(import.meta.env.VITE_DEPLOYER_ADDRESS);
-
-        console.log('Initializing contracts...');
-        console.log('GregoCoin:', gregoCoinAddress.toString());
-        console.log('GregoCoinPremium:', gregoCoinPremiumAddress.toString());
-        console.log('AMM:', AMMAddress.toString());
-        console.log('Contract Address Salt:', contractAddressSalt.toString());
-        console.log('Deployer Address:', deployerAddress.toString());
-
-        const [ammInstance, gregoCoinInstance, gregoCoinPremiumInstance] = await Promise.all([
-          getContractInstanceFromInstantiationParams(AMMContractArtifact, {
-            salt: contractAddressSalt,
-            deployer: deployerAddress,
-            constructorArgs: [gregoCoinAddress, gregoCoinPremiumAddress, liquidityTokenAddress],
-          }),
-          getContractInstanceFromInstantiationParams(TokenContractArtifact, {
-            salt: contractAddressSalt,
-            deployer: deployerAddress,
-            constructorArgs: [deployerAddress, 'GregoCoin', 'GRG', 18],
-          }),
-          getContractInstanceFromInstantiationParams(TokenContractArtifact, {
-            salt: contractAddressSalt,
-            deployer: deployerAddress,
-            constructorArgs: [deployerAddress, 'GregoCoinPremium', 'GRGP', 18],
-          }),
-          ,
-        ]);
-
-        await Promise.all([
-          wallet.registerContract(ammInstance, AMMContractArtifact),
-          wallet.registerContract(gregoCoinInstance, TokenContractArtifact),
-          wallet.registerContract(gregoCoinPremiumInstance, TokenContractArtifact),
-        ]);
 
         const gregoCoinContract = await TokenContract.at(gregoCoinAddress, wallet);
         const gregoCoinPremiumContract = await TokenContract.at(gregoCoinPremiumAddress, wallet);
@@ -131,6 +147,28 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     return Number(token1Reserve / token0Reserve);
   };
 
+  const swap = useCallback(
+    async (tokenIn: AztecAddress, tokenOut: AztecAddress, amountOut: number, amountInMax: number) => {
+      if (!wallet) throw new Error('Wallet not initialized');
+      if (!amm) throw new Error('AMM contract not initialized');
+      if (!currentAddress) throw new Error('No current address set');
+      if (!gregoCoin || !gregoCoinPremium) throw new Error('Token contracts not initialized');
+
+      const authwitNonce = Fr.random();
+      await amm.methods
+        .swap_tokens_for_exact_tokens(
+          tokenIn,
+          tokenOut,
+          BigInt(Math.round(amountOut) * 1e18),
+          BigInt(Math.round(amountInMax) * 1e18),
+          authwitNonce,
+        )
+        .send({ from: currentAddress })
+        .wait();
+    },
+    [wallet, amm, currentAddress, gregoCoin, gregoCoinPremium],
+  );
+
   const value: ContractsContextType = {
     gregoCoin,
     gregoCoinPremium,
@@ -138,6 +176,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     isLoading,
     error,
     getExchangeRate,
+    swap,
   };
 
   return <ContractsContext.Provider value={value}>{children}</ContractsContext.Provider>;

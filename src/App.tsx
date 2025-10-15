@@ -14,14 +14,27 @@ import SwapVertIcon from '@mui/icons-material/SwapVert';
 import { theme } from './theme';
 import { SwapBox } from './components/SwapBox';
 import { useContracts } from './contexts/ContractsContext';
+import { useWallet } from './contexts/WalletContext';
+import { WalletConnectModal } from './components/WalletConnectModal';
+import type { AztecAddress } from '@aztec/aztec.js';
 
 export function App() {
-  const { amm, gregoCoin, gregoCoinPremium, isLoading: contractsLoading, error, getExchangeRate } = useContracts();
+  const {
+    amm,
+    gregoCoin,
+    gregoCoinPremium,
+    isLoading: contractsLoading,
+    error,
+    getExchangeRate,
+    swap,
+  } = useContracts();
+  const { setCurrentAddress, isUsingEmbeddedWallet } = useWallet();
   const [fromAmount, setFromAmount] = useState('');
   const [toAmount, setToAmount] = useState('');
   const [isFromActive, setIsFromActive] = useState(true);
   const [exchangeRate, setExchangeRate] = useState<number | undefined>(undefined);
   const [isLoadingRate, setIsLoadingRate] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     async function fetchExchangeRate() {
@@ -93,6 +106,14 @@ export function App() {
     setFromAmount(toAmount);
     setToAmount(tempAmount);
     setIsFromActive(!isFromActive);
+  };
+
+  const doSwap = async () => {
+    if (!amm || !gregoCoin || !gregoCoinPremium || !fromAmount || parseFloat(fromAmount) <= 0) {
+      console.error('Cannot perform swap: Missing data or invalid amount');
+      return;
+    }
+    await swap(gregoCoin.address, gregoCoinPremium.address, parseFloat(toAmount), parseFloat(fromAmount) * 1.1);
   };
 
   return (
@@ -235,6 +256,13 @@ export function App() {
               variant="contained"
               size="large"
               disabled={!fromAmount || parseFloat(fromAmount) <= 0}
+              onClick={() => {
+                if (isUsingEmbeddedWallet) {
+                  setIsModalOpen(true);
+                } else {
+                  doSwap();
+                }
+              }}
               sx={{
                 mt: 3,
                 py: 2,
@@ -264,6 +292,16 @@ export function App() {
           </Box>
         </Container>
       </Box>
+
+      {/* Wallet Connect Modal */}
+      <WalletConnectModal
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onAccountSelect={(address: AztecAddress) => {
+          setCurrentAddress(address);
+          console.log('Selected account:', address.toString());
+        }}
+      />
     </ThemeProvider>
   );
 }
