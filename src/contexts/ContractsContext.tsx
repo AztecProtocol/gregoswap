@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
-import { AztecAddress, BatchCall } from '@aztec/aztec.js';
-import { TokenContract } from '@aztec/noir-contracts.js/Token';
-import { AMMContract } from '@aztec/noir-contracts.js/AMM';
+import { AztecAddress, BatchCall, Fr, getContractInstanceFromInstantiationParams } from '@aztec/aztec.js';
+import type { TokenContract } from '@aztec/noir-contracts.js/Token';
+import type { AMMContract } from '@aztec/noir-contracts.js/AMM';
 import { useWallet } from './WalletContext';
 
 interface ContractsContextType {
@@ -62,16 +62,34 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         const AMMAddress = AztecAddress.fromString(import.meta.env.VITE_AMM_ADDRESS);
         const gregoCoinAddress = AztecAddress.fromString(import.meta.env.VITE_GREGOCOIN_ADDRESS);
         const gregoCoinPremiumAddress = AztecAddress.fromString(import.meta.env.VITE_GREGOCOIN_PREMIUM_ADDRESS);
+        const liquidityTokenAddress = AztecAddress.fromString(import.meta.env.VITE_LIQUIDITY_TOKEN_ADDRESS);
+        const contractAddressSalt = Fr.fromString(import.meta.env.VITE_CONTRACT_ADDRESS_SALT);
+        const deployerAddress = AztecAddress.fromString(import.meta.env.VITE_DEPLOYER_ADDRESS);
 
         console.log('Initializing contracts...');
-        console.log('GregoCoin:', gregoCoinAddress);
-        console.log('GregoCoinPremium:', gregoCoinPremiumAddress);
-        console.log('AMM:', AMMAddress);
+        console.log('GregoCoin:', gregoCoinAddress.toString());
+        console.log('GregoCoinPremium:', gregoCoinPremiumAddress.toString());
+        console.log('AMM:', AMMAddress.toString());
+        console.log('Contract Address Salt:', contractAddressSalt.toString());
+        console.log('Deployer Address:', deployerAddress.toString());
 
         const [ammInstance, gregoCoinInstance, gregoCoinPremiumInstance] = await Promise.all([
-          node.getContract(AMMAddress),
-          node.getContract(gregoCoinAddress),
-          node.getContract(gregoCoinPremiumAddress),
+          getContractInstanceFromInstantiationParams(AMMContractArtifact, {
+            salt: contractAddressSalt,
+            deployer: deployerAddress,
+            constructorArgs: [gregoCoinAddress, gregoCoinPremiumAddress, liquidityTokenAddress],
+          }),
+          getContractInstanceFromInstantiationParams(TokenContractArtifact, {
+            salt: contractAddressSalt,
+            deployer: deployerAddress,
+            constructorArgs: [deployerAddress, 'GregoCoin', 'GRG', 18],
+          }),
+          getContractInstanceFromInstantiationParams(TokenContractArtifact, {
+            salt: contractAddressSalt,
+            deployer: deployerAddress,
+            constructorArgs: [deployerAddress, 'GregoCoinPremium', 'GRGP', 18],
+          }),
+          ,
         ]);
 
         await Promise.all([

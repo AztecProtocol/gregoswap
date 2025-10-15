@@ -7,7 +7,6 @@ import {
   BaseWallet,
   SignerlessAccount,
   type SimulateInteractionOptions,
-  createAztecNodeClient,
   type AztecNode,
   AccountManager,
 } from '@aztec/aztec.js';

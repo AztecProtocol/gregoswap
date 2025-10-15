@@ -1,7 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
 import { AztecAddress, createAztecNodeClient, type AztecNode, type Wallet } from '@aztec/aztec.js';
 import { EmbeddedWallet } from '../embedded_wallet';
-import type { AMMContract } from '@aztec/noir-contracts.js/AMM';
 
 interface WalletContextType {
   wallet: Wallet | null;
