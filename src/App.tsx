@@ -44,25 +44,46 @@ export function App() {
     fetchExchangeRate();
   }, [amm, gregoCoin, gregoCoinPremium, getExchangeRate]);
 
+  // Recalculate amounts when exchange rate changes
+  useEffect(() => {
+    if (exchangeRate === undefined) return;
+
+    if (isFromActive && fromAmount !== '' && fromAmount !== '0') {
+      const calculatedTo = (parseFloat(fromAmount) * exchangeRate).toFixed(6);
+      setToAmount(calculatedTo);
+    } else if (!isFromActive && toAmount !== '' && toAmount !== '0') {
+      const calculatedFrom = (parseFloat(toAmount) / exchangeRate).toFixed(6);
+      setFromAmount(calculatedFrom);
+    }
+  }, [exchangeRate, isFromActive, fromAmount, toAmount]);
+
   const handleFromChange = (value: string) => {
     setFromAmount(value);
     setIsFromActive(true);
+
     if (value === '') {
       setToAmount('');
     } else if (exchangeRate !== undefined) {
       const calculatedTo = (parseFloat(value) * exchangeRate).toFixed(6);
       setToAmount(calculatedTo);
+    } else {
+      // If rate is loading and user is typing, show loading in the other box
+      setToAmount('...');
     }
   };
 
   const handleToChange = (value: string) => {
     setToAmount(value);
     setIsFromActive(false);
+
     if (value === '') {
       setFromAmount('');
     } else if (exchangeRate !== undefined) {
       const calculatedFrom = (parseFloat(value) / exchangeRate).toFixed(6);
       setFromAmount(calculatedFrom);
+    } else {
+      // If rate is loading and user is typing, show loading in the other box
+      setFromAmount('...');
     }
   };
 
@@ -129,23 +150,32 @@ export function App() {
               tokenName="GregoCoin"
               value={fromAmount}
               onChange={handleFromChange}
-              disabled={false}
+              disabled={!isFromActive && toAmount !== '' && exchangeRate === undefined}
             />
 
             {/* Swap Direction Button */}
             <Box sx={{ display: 'flex', justifyContent: 'center', my: -2, position: 'relative', zIndex: 1 }}>
               <IconButton
                 onClick={handleSwapDirection}
+                disabled={contractsLoading || isLoadingRate || exchangeRate === undefined}
                 sx={{
-                  backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                  backgroundColor: 'rgba(18, 18, 28, 1)',
                   border: '2px solid',
                   borderColor: 'rgba(212, 255, 40, 0.3)',
                   color: 'primary.main',
+                  boxShadow: '0 0 0 4px rgba(18, 18, 28, 1)',
                   '&:hover': {
                     backgroundColor: 'primary.main',
                     borderColor: 'primary.main',
                     color: '#00122E',
                     transform: 'rotate(180deg)',
+                    boxShadow: '0 0 0 4px rgba(18, 18, 28, 1)',
+                  },
+                  '&:disabled': {
+                    opacity: 0.5,
+                    color: 'text.secondary',
+                    backgroundColor: 'rgba(18, 18, 28, 1)',
+                    boxShadow: '0 0 0 4px rgba(18, 18, 28, 1)',
                   },
                   transition: 'all 0.3s ease-in-out',
                 }}
@@ -160,7 +190,7 @@ export function App() {
               tokenName="GregoCoinPremium"
               value={toAmount}
               onChange={handleToChange}
-              disabled={false}
+              disabled={isFromActive && fromAmount !== '' && exchangeRate === undefined}
             />
 
             {/* Exchange Rate Info */}

@@ -50,6 +50,7 @@ export function SwapBox({ label, tokenName, value, onChange, disabled = false }:
           onChange={handleChange}
           disabled={disabled}
           placeholder="0.0"
+          autoComplete="off"
           slotProps={{
             input: {
               disableUnderline: true,
