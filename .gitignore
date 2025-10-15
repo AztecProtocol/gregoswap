@@ -29,3 +29,4 @@ vite.config.ts.*
 *.module.css.d.ts
 bundlemeta.json
 test-results/
+.pxe-store
