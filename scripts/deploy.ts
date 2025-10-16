@@ -173,6 +173,8 @@ async function writeEnvFile(deploymentInfo) {
     DEPLOYER_SALT: deploymentInfo.deployerSalt,
     DEPLOYER_SECRET_KEY: deploymentInfo.deployerSecretKey,
     VITE_AZTEC_NODE_URL: AZTEC_NODE_URL,
+    VITE_CHAIN_ID: deploymentInfo.chainId,
+    VITE_ROLLUP_VERSION: deploymentInfo.rollupVersion,
   })
     .map(([key, value]) => `${key}=${value}`)
     .join('\n');
@@ -191,6 +193,8 @@ async function createAccountAndDeployContract() {
   const aztecNode = createAztecNodeClient(AZTEC_NODE_URL);
   const wallet = await setupWallet(aztecNode);
 
+  const { rollupVersion, l1ChainId: chainId } = await aztecNode.getNodeInfo();
+
   // Register the SponsoredFPC contract (for sponsored fee payments)
   await wallet.registerContract(await getSponsoredPFCContract(), SponsoredFPCContractArtifact);
 
@@ -201,6 +205,8 @@ async function createAccountAndDeployContract() {
   const contractDeploymentInfo = await deployContracts(wallet, deployer);
   const deploymentInfo = {
     ...contractDeploymentInfo,
+    chainId: chainId.toString(),
+    rollupVersion: rollupVersion.toString(),
     deployerAddress: deployer.toString(),
     deployerSalt: salt.toString(),
     deployerSecretKey: secretKey.toString(),

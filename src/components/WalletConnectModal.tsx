@@ -41,7 +41,7 @@ export function WalletConnectModal({ open, onClose, onAccountSelect }: WalletCon
         // Construct ChainInfo from env variables
         const chainInfo = {
           chainId: Fr.fromString(import.meta.env.VITE_CHAIN_ID || '31337'),
-          version: Fr.fromString(import.meta.env.VITE_PROTOCOL_VERSION || '809002548'),
+          version: Fr.fromString(import.meta.env.VITE_ROLLUP_VERSION || '1681471542'),
         };
 
         // Connect to extension wallet
