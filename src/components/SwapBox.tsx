@@ -1,4 +1,4 @@
-import { Box, Typography, TextField, Paper } from '@mui/material';
+import { Box, Typography, TextField, Paper, Button } from '@mui/material';
 
 interface SwapBoxProps {
   label: string;
@@ -6,16 +6,45 @@ interface SwapBoxProps {
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  usdValue?: number;
+  balance?: bigint | null;
+  showBalance?: boolean;
+  onMaxClick?: () => void;
 }
 
-export function SwapBox({ label, tokenName, value, onChange, disabled = false }: SwapBoxProps) {
+export function SwapBox({ label, tokenName, value, onChange, disabled = false, usdValue, balance, showBalance = false, onMaxClick }: SwapBoxProps) {
+  // Format balance: balance is stored as whole units (not wei)
+  const formatBalance = (bal: bigint | null | undefined): string => {
+    if (bal === null || bal === undefined) return '0.00';
+    return Number(bal).toFixed(2);
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
+
     // Only allow numbers and decimal point
     if (newValue === '' || /^\d*\.?\d*$/.test(newValue)) {
+      // If balance exists and showBalance is true, validate against balance
+      if (showBalance && balance !== null && balance !== undefined && newValue !== '') {
+        const numericValue = parseFloat(newValue);
+        const maxBalance = Number(balance);
+
+        // Only allow values up to the balance
+        if (numericValue > maxBalance) {
+          return; // Don't update if exceeds balance
+        }
+      }
+
       onChange(newValue);
     }
   };
+
+  // Check if current value exceeds balance
+  const hasError = showBalance &&
+                   balance !== null &&
+                   balance !== undefined &&
+                   value !== '' &&
+                   parseFloat(value) > Number(balance);
 
   return (
     <Paper
@@ -24,22 +53,54 @@ export function SwapBox({ label, tokenName, value, onChange, disabled = false }:
         p: 3,
         backgroundColor: 'rgba(0, 0, 0, 0.4)',
         border: '1px solid',
-        borderColor: 'rgba(212, 255, 40, 0.15)',
+        borderColor: hasError ? 'rgba(255, 107, 107, 0.5)' : 'rgba(212, 255, 40, 0.15)',
         backdropFilter: 'blur(10px)',
         transition: 'all 0.2s ease-in-out',
         '&:hover': {
-          borderColor: 'primary.main',
-          boxShadow: '0px 4px 16px rgba(212, 255, 40, 0.25)',
+          borderColor: hasError ? 'rgba(255, 107, 107, 0.7)' : 'primary.main',
+          boxShadow: hasError
+            ? '0px 4px 16px rgba(255, 107, 107, 0.25)'
+            : '0px 4px 16px rgba(212, 255, 40, 0.25)',
         },
       }}
     >
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, alignItems: 'center' }}>
         <Typography variant="body2" color="text.secondary" fontWeight={500}>
           {label}
         </Typography>
-        <Typography variant="body2" color="text.secondary" fontWeight={500}>
-          Balance: 0.00
-        </Typography>
+        {showBalance && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="body2" color="text.secondary" fontWeight={500}>
+              Balance: {formatBalance(balance)}
+            </Typography>
+            {onMaxClick && balance !== null && balance !== undefined && Number(balance) > 0 && (
+              <Button
+                size="small"
+                onClick={onMaxClick}
+                disabled={disabled}
+                sx={{
+                  minWidth: 'auto',
+                  px: 1,
+                  py: 0.25,
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  color: 'primary.main',
+                  backgroundColor: 'rgba(212, 255, 40, 0.1)',
+                  border: '1px solid',
+                  borderColor: 'primary.main',
+                  '&:hover': {
+                    backgroundColor: 'rgba(212, 255, 40, 0.2)',
+                  },
+                  '&:disabled': {
+                    opacity: 0.5,
+                  },
+                }}
+              >
+                MAX
+              </Button>
+            )}
+          </Box>
+        )}
       </Box>
 
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -78,23 +139,31 @@ export function SwapBox({ label, tokenName, value, onChange, disabled = false }:
             display: 'flex',
             alignItems: 'center',
             gap: 1,
-            px: 2,
+            px: 2.5,
             py: 1,
-            backgroundColor: 'rgba(212, 255, 40, 0.15)',
+            backgroundColor: 'rgba(157, 77, 135, 0.2)',
+            borderRadius: '20px',
             border: '1px solid',
-            borderColor: 'primary.main',
-            color: 'primary.main',
+            borderColor: '#9d4d87',
+            color: '#9d4d87',
           }}
         >
-          <Typography variant="body1" fontWeight={700}>
+          <Typography variant="body1" fontWeight={700} sx={{ fontSize: '0.9rem', letterSpacing: '0.02em' }}>
             {tokenName}
           </Typography>
         </Box>
       </Box>
 
-      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-        ≈ $0.00
-      </Typography>
+      <Box sx={{ mt: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="caption" color="text.secondary">
+          ≈ ${usdValue ? usdValue.toFixed(2) : '0.00'}
+        </Typography>
+        {hasError && (
+          <Typography variant="caption" sx={{ color: '#ff6b6b', fontWeight: 600 }}>
+            Exceeds balance
+          </Typography>
+        )}
+      </Box>
     </Paper>
   );
 }

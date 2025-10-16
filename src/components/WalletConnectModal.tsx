@@ -36,8 +36,6 @@ export function WalletConnectModal({ open, onClose, onAccountSelect }: WalletCon
         setError(null);
         setAccounts([]);
 
-        console.log('Requesting accounts from extension wallet...');
-
         // Construct ChainInfo from env variables
         const chainInfo = {
           chainId: Fr.fromString(import.meta.env.VITE_CHAIN_ID || '31337'),
@@ -49,8 +47,6 @@ export function WalletConnectModal({ open, onClose, onAccountSelect }: WalletCon
 
         // Get accounts from extension wallet
         const walletAccounts = await extensionWallet.getAccounts();
-
-        console.log('Received accounts:', walletAccounts);
 
         if (!walletAccounts || walletAccounts.length === 0) {
           throw new Error('No accounts found in wallet. Please create an account in your Aztec wallet.');

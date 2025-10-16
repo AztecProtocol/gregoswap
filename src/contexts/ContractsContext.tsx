@@ -46,9 +46,13 @@ interface ContractsContextType {
   amm: AMMContract | null;
   isLoading: boolean;
   error: string | null;
+  gregoCoinBalance: bigint | null;
+  gregoCoinPremiumBalance: bigint | null;
+  isLoadingBalances: boolean;
   // Utility methods
   getExchangeRate: () => Promise<number>;
   swap: (tokenIn: AztecAddress, tokenOut: AztecAddress, amountOut: number, amountInMax: number) => Promise<void>;
+  fetchBalances: () => Promise<void>;
 }
 
 const ContractsContext = createContext<ContractsContextType | undefined>(undefined);
@@ -107,6 +111,9 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
   const [amm, setAmm] = useState<AMMContract | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [gregoCoinBalance, setGregoCoinBalance] = useState<bigint | null>(null);
+  const [gregoCoinPremiumBalance, setGregoCoinPremiumBalance] = useState<bigint | null>(null);
+  const [isLoadingBalances, setIsLoadingBalances] = useState(false);
   const lastWallet = useRef<Wallet | null>(null);
 
   useEffect(() => {
@@ -123,13 +130,10 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
       }
 
       lastWallet.current = wallet;
-      console.log('Wallet instance changed, reinitializing contracts');
 
       try {
         setIsLoading(true);
         setError(null);
-
-        console.log('Initializing contracts...');
 
         // Register contracts using the helper function
         // TODO: Remove 'as unknown as any' when correct types are exported from the library
@@ -151,7 +155,6 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         setGregoCoinPremium(gregoCoinPremiumContract);
         setAmm(ammContract);
 
-        console.log('Contracts initialized successfully');
         setIsLoading(false);
       } catch (err) {
         console.error('Failed to initialize contracts:', err);
@@ -173,7 +176,6 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
       gregoCoinPremium.methods.balance_of_public(amm.address),
     ]);
     const [token0Reserve, token1Reserve] = await batchCall.simulate({ from: currentAddress });
-    console.log(`Reserves - Token0: ${token0Reserve}, Token1: ${token1Reserve}`);
     return parseFloat(new BigDecimal(token1Reserve).divide(new BigDecimal(token0Reserve)).toString());
   };
 
@@ -199,14 +201,39 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     [wallet, amm, currentAddress, gregoCoin, gregoCoinPremium],
   );
 
+  const fetchBalances = useCallback(async () => {
+    if (!wallet || !gregoCoin || !gregoCoinPremium || !currentAddress) {
+      return;
+    }
+
+    try {
+      setIsLoadingBalances(true);
+      const batchCall = new BatchCall(wallet, [
+        gregoCoin.methods.balance_of_private(currentAddress),
+        gregoCoinPremium.methods.balance_of_private(currentAddress),
+      ]);
+      const [gcBalance, gcpBalance] = await batchCall.simulate({ from: currentAddress });
+      setGregoCoinBalance(gcBalance);
+      setGregoCoinPremiumBalance(gcpBalance);
+    } catch (err) {
+      console.error('Failed to fetch balances:', err);
+    } finally {
+      setIsLoadingBalances(false);
+    }
+  }, [wallet, gregoCoin, gregoCoinPremium, currentAddress]);
+
   const value: ContractsContextType = {
     gregoCoin,
     gregoCoinPremium,
     amm,
     isLoading,
     error,
+    gregoCoinBalance,
+    gregoCoinPremiumBalance,
+    isLoadingBalances,
     getExchangeRate,
     swap,
+    fetchBalances,
   };
 
   return <ContractsContext.Provider value={value}>{children}</ContractsContext.Provider>;

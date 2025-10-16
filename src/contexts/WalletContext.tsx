@@ -57,7 +57,6 @@ export function WalletProvider({ children }: WalletProviderProps) {
           throw new Error('VITE_AZTEC_NODE_URL is not defined in environment variables');
         }
 
-        console.log('Connecting to Aztec node at:', nodeUrl);
         const aztecNode = createAztecNodeClient(nodeUrl);
         setNode(aztecNode);
 
