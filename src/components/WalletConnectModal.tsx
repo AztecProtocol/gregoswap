@@ -12,8 +12,10 @@ import {
   ListItemText,
   Alert,
 } from '@mui/material';
-import { type AztecAddress, type Aliased, Fr } from '@aztec/aztec.js';
 import { useWallet } from '../contexts/WalletContext';
+import type { AztecAddress } from '@aztec/aztec.js/addresses';
+import type { Aliased } from '@aztec/aztec.js/wallet';
+import { Fr } from '@aztec/aztec.js/fields';
 
 interface WalletConnectModalProps {
   open: boolean;

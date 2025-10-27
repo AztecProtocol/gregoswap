@@ -30,3 +30,4 @@ vite.config.ts.*
 bundlemeta.json
 test-results/
 .pxe-store
+contracts/target

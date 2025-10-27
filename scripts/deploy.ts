@@ -1,15 +1,3 @@
-import {
-  AztecAddress,
-  createAztecNodeClient,
-  type DeployAccountOptions,
-  DeployMethod,
-  Fr,
-  getContractInstanceFromInstantiationParams,
-  PublicKeys,
-  SponsoredFeePaymentMethod,
-  type Wallet,
-} from '@aztec/aztec.js';
-import { type AztecNode } from '@aztec/aztec.js/interfaces';
 import { SPONSORED_FPC_SALT } from '@aztec/constants';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
 import { getPXEConfig } from '@aztec/pxe/server';
@@ -20,6 +8,12 @@ import path from 'path';
 import { TokenContract } from '@aztec/noir-contracts.js/Token';
 import { AMMContract } from '@aztec/noir-contracts.js/AMM';
 import { deriveSigningKey } from '@aztec/stdlib/keys';
+import { AztecAddress } from '@aztec/stdlib/aztec-address';
+import { createAztecNodeClient, type AztecNode } from '@aztec/aztec.js/node';
+import { getContractInstanceFromInstantiationParams } from '@aztec/stdlib/contract';
+import { Fr } from '@aztec/foundation/fields';
+import type { DeployAccountOptions } from '@aztec/aztec.js/wallet';
+import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
 const PROVER_ENABLED = process.env.PROVER_ENABLED === 'false' ? false : true;
@@ -66,8 +60,7 @@ async function createAccount(wallet: TestWallet) {
     skipClassPublication: true,
     skipInstancePublication: true,
   };
-  const provenInteraction = await deployMethod.prove(deployOpts);
-  await provenInteraction.send().wait({ timeout: 120 });
+  await deployMethod.send(deployOpts).wait({ timeout: 120 });
 
   return {
     address: accountManager.address,

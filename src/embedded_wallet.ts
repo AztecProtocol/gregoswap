@@ -1,15 +1,6 @@
 import { getStubAccountContractArtifact, createStubAccount } from '@aztec/accounts/stub/lazy';
 import { SchnorrAccountContract } from '@aztec/accounts/schnorr/lazy';
 
-import {
-  type Account,
-  type AccountContract,
-  BaseWallet,
-  SignerlessAccount,
-  type SimulateInteractionOptions,
-  type AztecNode,
-  AccountManager,
-} from '@aztec/aztec.js';
 import { getPXEConfig, type PXEConfig } from '@aztec/pxe/config';
 import { createPXE, PXE } from '@aztec/pxe/client/lazy';
 import { ExecutionPayload, mergeExecutionPayloads } from '@aztec/entrypoints/payload';
@@ -19,6 +10,10 @@ import { getContractInstanceFromInstantiationParams } from '@aztec/stdlib/contra
 import type { TxSimulationResult } from '@aztec/stdlib/tx';
 import type { DefaultAccountEntrypointOptions } from '@aztec/entrypoints/account';
 import { deriveSigningKey } from '@aztec/stdlib/keys';
+import { SignerlessAccount, type Account, type AccountContract } from '@aztec/aztec.js/account';
+import { AccountManager, BaseWallet } from '@aztec/aztec.js/wallet';
+import type { AztecNode } from '@aztec/aztec.js/node';
+import type { SimulateInteractionOptions } from '@aztec/aztec.js/contracts';
 
 /**
  * Data for generating an account.

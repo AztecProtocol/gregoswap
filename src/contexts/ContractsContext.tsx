@@ -1,15 +1,11 @@
 import { createContext, useContext, useState, useEffect, useRef, type ReactNode, useCallback } from 'react';
-import {
-  AztecAddress,
-  BatchCall,
-  Fr,
-  getContractInstanceFromInstantiationParams,
-  ProvenTx,
-  type Wallet,
-} from '@aztec/aztec.js';
 import type { TokenContract } from '@aztec/noir-contracts.js/Token';
 import type { AMMContract } from '@aztec/noir-contracts.js/AMM';
 import { useWallet } from './WalletContext';
+import type { Wallet } from '@aztec/aztec.js/wallet';
+import { AztecAddress } from '@aztec/aztec.js/addresses';
+import { Fr } from '@aztec/aztec.js/fields';
+import { BatchCall, getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
 
 class BigDecimal {
   // Configuration: private constants

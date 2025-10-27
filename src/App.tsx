@@ -20,7 +20,7 @@ import { SwapProgress } from './components/SwapProgress';
 import { useContracts } from './contexts/ContractsContext';
 import { useWallet } from './contexts/WalletContext';
 import { WalletConnectModal } from './components/WalletConnectModal';
-import type { AztecAddress } from '@aztec/aztec.js';
+import type { AztecAddress } from '@aztec/aztec.js/addresses';
 
 function GregoSwapLogo({ height = 48 }: { height?: number }) {
   return (
@@ -138,7 +138,7 @@ export function App() {
 
     // Set up auto-refresh every 10 seconds (only when not swapping)
     const intervalId = setInterval(() => {
-      if (!isSwapping) {
+      if (!isSwapping && !isLoadingRate) {
         fetchExchangeRate();
       }
     }, 10000);

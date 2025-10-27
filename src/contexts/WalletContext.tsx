@@ -1,8 +1,10 @@
 import { createContext, useContext, useState, useEffect, useRef, type ReactNode, useCallback } from 'react';
-import { AztecAddress, createAztecNodeClient, type AztecNode, type Wallet, type ChainInfo } from '@aztec/aztec.js';
 import { EmbeddedWallet } from '../embedded_wallet';
 import { ExtensionWallet } from '../extension_wallet';
-import { set } from 'zod';
+import { createAztecNodeClient, type AztecNode } from '@aztec/aztec.js/node';
+import type { Wallet } from '@aztec/aztec.js/wallet';
+import type { AztecAddress } from '@aztec/aztec.js/addresses';
+import type { ChainInfo } from '@aztec/aztec.js/account';
 
 interface WalletContextType {
   wallet: Wallet | null;
