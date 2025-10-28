@@ -39,7 +39,15 @@ const shimmer = keyframes`
   }
 `;
 
-export function SwapProgress() {
+type SwapPhase = 'sending' | 'mining';
+
+interface SwapProgressProps {
+  phase?: SwapPhase;
+}
+
+export function SwapProgress({ phase = 'sending' }: SwapProgressProps) {
+  const statusText = phase === 'sending' ? 'Proving & sending transaction' : 'Mining transaction';
+  const statusDetail = phase === 'sending' ? 'Preparing your swap...' : 'Waiting for confirmation...';
   return (
     <Box
       sx={{
@@ -116,40 +124,53 @@ export function SwapProgress() {
       </Box>
 
       {/* Status text */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, zIndex: 1 }}>
-        <Typography
-          variant="body1"
-          sx={{
-            color: '#F2EEE1',
-            fontWeight: 600,
-            fontSize: '1.125rem',
-          }}
-        >
-          Swappin'
-        </Typography>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, zIndex: 1, flex: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Typography
+            variant="body1"
+            sx={{
+              color: '#F2EEE1',
+              fontWeight: 600,
+              fontSize: '1.125rem',
+            }}
+          >
+            {statusText}
+          </Typography>
 
-        {/* Loading dots */}
-        <Box
+          {/* Loading dots */}
+          <Box
+            sx={{
+              display: 'flex',
+              gap: 0.5,
+              alignItems: 'center',
+            }}
+          >
+            {[0, 1, 2].map(i => (
+              <Box
+                key={i}
+                sx={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  backgroundColor: '#F2EEE1',
+                  animation: `${pulse} 1.5s ease-in-out infinite`,
+                  animationDelay: `${i * 0.2}s`,
+                }}
+              />
+            ))}
+          </Box>
+        </Box>
+
+        {/* Detail text */}
+        <Typography
+          variant="caption"
           sx={{
-            display: 'flex',
-            gap: 0.5,
-            alignItems: 'center',
+            color: 'rgba(242, 238, 225, 0.7)',
+            fontSize: '0.875rem',
           }}
         >
-          {[0, 1, 2].map(i => (
-            <Box
-              key={i}
-              sx={{
-                width: 6,
-                height: 6,
-                borderRadius: '50%',
-                backgroundColor: '#F2EEE1',
-                animation: `${pulse} 1.5s ease-in-out infinite`,
-                animationDelay: `${i * 0.2}s`,
-              }}
-            />
-          ))}
-        </Box>
+          {statusDetail}
+        </Typography>
       </Box>
     </Box>
   );

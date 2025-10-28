@@ -6,6 +6,7 @@ import type { Wallet } from '@aztec/aztec.js/wallet';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { Fr } from '@aztec/aztec.js/fields';
 import { BatchCall, getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
+import { waitForTxWithPhases } from '../utils/txUtils';
 
 class BigDecimal {
   // Configuration: private constants
@@ -47,8 +48,15 @@ interface ContractsContextType {
   isLoadingBalances: boolean;
   // Utility methods
   getExchangeRate: () => Promise<number>;
-  swap: (tokenIn: AztecAddress, tokenOut: AztecAddress, amountOut: number, amountInMax: number) => Promise<void>;
+  swap: (
+    tokenIn: AztecAddress,
+    tokenOut: AztecAddress,
+    amountOut: number,
+    amountInMax: number,
+    onPhaseChange?: (phase: 'sending' | 'mining') => void,
+  ) => Promise<void>;
   fetchBalances: () => Promise<void>;
+  simulateOnboardingQueries: () => Promise<void>;
 }
 
 const ContractsContext = createContext<ContractsContextType | undefined>(undefined);
@@ -176,14 +184,22 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
   };
 
   const swap = useCallback(
-    async (tokenIn: AztecAddress, tokenOut: AztecAddress, amountOut: number, amountInMax: number) => {
+    async (
+      tokenIn: AztecAddress,
+      tokenOut: AztecAddress,
+      amountOut: number,
+      amountInMax: number,
+      onPhaseChange?: (phase: 'sending' | 'mining') => void,
+    ) => {
       if (!wallet) throw new Error('Wallet not initialized');
       if (!amm) throw new Error('AMM contract not initialized');
       if (!currentAddress) throw new Error('No current address set');
       if (!gregoCoin || !gregoCoinPremium) throw new Error('Token contracts not initialized');
 
       const authwitNonce = Fr.random();
-      await amm.methods
+
+      // Send the transaction and get the SentTx object
+      const sentTx = await amm.methods
         .swap_tokens_for_exact_tokens(
           tokenIn,
           tokenOut,
@@ -191,8 +207,10 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
           BigInt(Math.round(amountInMax)),
           authwitNonce,
         )
-        .send({ from: currentAddress })
-        .wait();
+        .send({ from: currentAddress });
+
+      // Use the utility to wait for tx with proper phase tracking
+      await waitForTxWithPhases(sentTx, onPhaseChange);
     },
     [wallet, amm, currentAddress, gregoCoin, gregoCoinPremium],
   );
@@ -218,6 +236,32 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     }
   }, [wallet, gregoCoin, gregoCoinPremium, currentAddress]);
 
+  const simulateOnboardingQueries = useCallback(async () => {
+    if (!wallet || !gregoCoin || !gregoCoinPremium || !amm || !currentAddress) {
+      throw new Error('Contracts not initialized');
+    }
+
+    // Create a batched simulation that includes:
+    // 1. Exchange rate data (public balances of AMM)
+    // 2. User's private balances
+    // This triggers wallet approval for these queries, so future reads are seamless
+    const batchCall = new BatchCall(wallet, [
+      gregoCoin.methods.balance_of_public(amm.address),
+      gregoCoinPremium.methods.balance_of_public(amm.address),
+      gregoCoin.methods.balance_of_private(currentAddress),
+      gregoCoinPremium.methods.balance_of_private(currentAddress),
+    ]);
+
+    const [_token0Reserve, _token1Reserve, gcBalance, gcpBalance] = await batchCall.simulate({ from: currentAddress });
+
+    // Update state with the results
+    setGregoCoinBalance(gcBalance);
+    setGregoCoinPremiumBalance(gcpBalance);
+
+    // Note: token reserves are fetched to trigger wallet approval for exchange rate queries
+    // The actual exchange rate is calculated separately in getExchangeRate()
+  }, [wallet, gregoCoin, gregoCoinPremium, amm, currentAddress]);
+
   const value: ContractsContextType = {
     gregoCoin,
     gregoCoinPremium,
@@ -230,6 +274,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     getExchangeRate,
     swap,
     fetchBalances,
+    simulateOnboardingQueries,
   };
 
   return <ContractsContext.Provider value={value}>{children}</ContractsContext.Provider>;

@@ -119,7 +119,7 @@ export default defineConfig(({ mode }) => {
         },
         {
           pattern: /.*/,
-          maxSizeKB: 18000,
+          maxSizeKB: 7000,
           description: 'Detect if json artifacts or bb.js wasm get out of control',
         },
       ]),

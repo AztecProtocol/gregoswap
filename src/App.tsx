@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   ThemeProvider,
   CssBaseline,
@@ -19,7 +19,10 @@ import { SwapBox } from './components/SwapBox';
 import { SwapProgress } from './components/SwapProgress';
 import { useContracts } from './contexts/ContractsContext';
 import { useWallet } from './contexts/WalletContext';
+import { useOnboarding } from './contexts/OnboardingContext';
 import { WalletConnectModal } from './components/WalletConnectModal';
+import { OnboardingModal } from './components/OnboardingModal';
+import { SwapTransition } from './components/SwapTransition';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 
 function GregoSwapLogo({ height = 48 }: { height?: number }) {
@@ -80,19 +83,31 @@ export function App() {
     gregoCoinBalance,
     gregoCoinPremiumBalance,
     isLoadingBalances,
+    simulateOnboardingQueries,
   } = useContracts();
   const { setCurrentAddress, isUsingEmbeddedWallet, currentAddress } = useWallet();
+  const {
+    status: onboardingStatus,
+    isSwapPending,
+    startOnboarding,
+    setStatus: setOnboardingStatus,
+    completeOnboarding,
+    clearSwapPending,
+  } = useOnboarding();
 
   const [fromAmount, setFromAmount] = useState('');
   const [toAmount, setToAmount] = useState('');
   const [isFromActive, setIsFromActive] = useState(true);
   const [exchangeRate, setExchangeRate] = useState<number | undefined>(undefined);
   const [isLoadingRate, setIsLoadingRate] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [shouldExecuteSwap, setShouldExecuteSwap] = useState(false);
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
+  const [showTransition, setShowTransition] = useState(false);
   const [swapError, setSwapError] = useState<string | null>(null);
   const [isSwapping, setIsSwapping] = useState(false);
-  const [isModalForSwap, setIsModalForSwap] = useState(false);
+  const [swapPhase, setSwapPhase] = useState<'sending' | 'mining'>('sending');
+
+  // Ref to track if an exchange rate fetch is in flight
+  const isFetchingRateRef = useRef(false);
 
   // USD conversion constants (1 GregoCoin = $10 USD)
   const GREGOCOIN_USD_PRICE = 10;
@@ -116,36 +131,63 @@ export function App() {
     toAmount !== '' &&
     parseFloat(toAmount) > Number(gregoCoinPremiumBalance);
 
-  // Fetch exchange rate with auto-refresh every 10 seconds (paused during swaps)
+  // Fetch exchange rate with auto-refresh every 10 seconds (paused during swaps and onboarding)
   useEffect(() => {
     async function fetchExchangeRate() {
-      if (!amm || !gregoCoin || !gregoCoinPremium || isSwapping) return;
+      // Pause during swaps or any onboarding phase (except completed)
+      // Also only fetch when using embedded wallet OR when onboarding is completed
+      const shouldPause =
+        !amm ||
+        !gregoCoin ||
+        !gregoCoinPremium ||
+        isSwapping ||
+        onboardingStatus === 'connecting_wallet' ||
+        onboardingStatus === 'simulating_queries' ||
+        onboardingStatus === 'registering_contracts' ||
+        (!isUsingEmbeddedWallet && onboardingStatus !== 'completed');
+
+      if (shouldPause) {
+        // Reset loading state if we're pausing
+        setIsLoadingRate(false);
+        isFetchingRateRef.current = false;
+        return;
+      }
+
+      // Prevent concurrent requests
+      if (isFetchingRateRef.current) {
+        return;
+      }
 
       try {
+        isFetchingRateRef.current = true;
         setIsLoadingRate(true);
         const rate = await getExchangeRate();
 
         setExchangeRate(rate);
-        setIsLoadingRate(false);
       } catch (err) {
         console.error('Failed to fetch exchange rate:', err);
+      } finally {
         setIsLoadingRate(false);
+        isFetchingRateRef.current = false;
       }
     }
 
     // Initial fetch
     fetchExchangeRate();
 
-    // Set up auto-refresh every 10 seconds (only when not swapping)
+    // Set up auto-refresh every 10 seconds
     const intervalId = setInterval(() => {
-      if (!isSwapping && !isLoadingRate) {
-        fetchExchangeRate();
-      }
+      fetchExchangeRate();
     }, 10000);
 
     // Cleanup interval on unmount
-    return () => clearInterval(intervalId);
-  }, [amm, gregoCoin, gregoCoinPremium, getExchangeRate, isSwapping]);
+    return () => {
+      clearInterval(intervalId);
+      // Reset loading state on cleanup
+      setIsLoadingRate(false);
+      isFetchingRateRef.current = false;
+    };
+  }, [amm, gregoCoin, gregoCoinPremium, getExchangeRate, isSwapping, onboardingStatus, isUsingEmbeddedWallet]);
 
   // Recalculate amounts when exchange rate changes
   useEffect(() => {
@@ -160,20 +202,76 @@ export function App() {
     }
   }, [exchangeRate, isFromActive, fromAmount, toAmount]);
 
-  // Fetch balances when external wallet is connected
+  // Fetch balances when external wallet is connected (but not during onboarding)
   useEffect(() => {
-    if (!isUsingEmbeddedWallet && currentAddress && !contractsLoading && gregoCoin && gregoCoinPremium) {
+    if (
+      !isUsingEmbeddedWallet &&
+      currentAddress &&
+      !contractsLoading &&
+      gregoCoin &&
+      gregoCoinPremium &&
+      onboardingStatus === 'completed' // Only fetch after onboarding completes
+    ) {
       fetchBalances();
     }
-  }, [isUsingEmbeddedWallet, currentAddress, contractsLoading, gregoCoin, gregoCoinPremium, fetchBalances]);
+  }, [
+    isUsingEmbeddedWallet,
+    currentAddress,
+    contractsLoading,
+    gregoCoin,
+    gregoCoinPremium,
+    fetchBalances,
+    onboardingStatus,
+  ]);
 
-  // Execute swap after wallet switch when ready
+  // Onboarding orchestration - advance through steps
   useEffect(() => {
-    if (shouldExecuteSwap && currentAddress && !isUsingEmbeddedWallet && !contractsLoading) {
-      setShouldExecuteSwap(false);
-      doSwap();
+    async function handleOnboardingFlow() {
+      try {
+        // Step 1: After wallet connection, register contracts
+        if (onboardingStatus === 'connecting_wallet' && currentAddress && !isUsingEmbeddedWallet) {
+          setOnboardingStatus('registering_contracts');
+        }
+
+        // Step 2: After contracts are registered, simulate queries
+        if (
+          onboardingStatus === 'registering_contracts' &&
+          !contractsLoading &&
+          gregoCoin &&
+          gregoCoinPremium &&
+          amm &&
+          currentAddress
+        ) {
+          setOnboardingStatus('simulating_queries');
+          await simulateOnboardingQueries();
+          completeOnboarding();
+        }
+      } catch (error) {
+        console.error('Onboarding error:', error);
+        setOnboardingStatus('error', error instanceof Error ? error.message : 'Onboarding failed');
+      }
     }
-  }, [shouldExecuteSwap, currentAddress, isUsingEmbeddedWallet, contractsLoading]);
+
+    handleOnboardingFlow();
+  }, [
+    onboardingStatus,
+    currentAddress,
+    isUsingEmbeddedWallet,
+    contractsLoading,
+    gregoCoin,
+    gregoCoinPremium,
+    amm,
+    setOnboardingStatus,
+    completeOnboarding,
+    simulateOnboardingQueries,
+  ]);
+
+  // After onboarding completes, show transition and execute swap if pending
+  useEffect(() => {
+    if (onboardingStatus === 'completed' && isSwapPending) {
+      setShowTransition(true);
+    }
+  }, [onboardingStatus, isSwapPending]);
 
   const handleFromChange = (value: string) => {
     setFromAmount(value);
@@ -213,6 +311,19 @@ export function App() {
     setIsFromActive(!isFromActive);
   };
 
+  const handleSwapClick = () => {
+    // Check if user needs onboarding
+    if (isUsingEmbeddedWallet || onboardingStatus === 'not_started') {
+      // Start onboarding flow with swap pending
+      startOnboarding(true);
+      setIsWalletModalOpen(true);
+    } else if (onboardingStatus === 'completed') {
+      // Already onboarded, execute swap directly
+      doSwap();
+    }
+    // If onboarding is in progress, do nothing (shouldn't happen as button is disabled)
+  };
+
   const doSwap = async () => {
     // Clear any previous errors
     setSwapError(null);
@@ -225,8 +336,15 @@ export function App() {
     }
 
     setIsSwapping(true);
+    setSwapPhase('sending'); // Start with sending phase
     try {
-      await swap(gregoCoin.address, gregoCoinPremium.address, parseFloat(toAmount), parseFloat(fromAmount) * 1.1);
+      await swap(
+        gregoCoin.address,
+        gregoCoinPremium.address,
+        parseFloat(toAmount),
+        parseFloat(fromAmount) * 1.1,
+        (phase) => setSwapPhase(phase), // Update phase as swap progresses
+      );
       // Clear inputs on success
       setFromAmount('');
       setToAmount('');
@@ -256,6 +374,13 @@ export function App() {
     }
   };
 
+  const handleTransitionComplete = () => {
+    setShowTransition(false);
+    clearSwapPending();
+    // Now execute the swap
+    doSwap();
+  };
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -273,7 +398,7 @@ export function App() {
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundImage: 'url(/background.png)',
+            backgroundImage: 'url(/background.jpg)',
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat',
@@ -299,8 +424,7 @@ export function App() {
                 : 'Connect wallet'
             }
             onClick={() => {
-              setIsModalForSwap(false);
-              setIsModalOpen(true);
+              setIsWalletModalOpen(true);
             }}
             sx={{
               backgroundColor: 'rgba(212, 255, 40, 0.15)',
@@ -451,7 +575,7 @@ export function App() {
 
             {/* Swap Button or Progress */}
             {isSwapping ? (
-              <SwapProgress />
+              <SwapProgress phase={swapPhase} />
             ) : (
               <Button
                 fullWidth
@@ -465,16 +589,12 @@ export function App() {
                   !gregoCoin ||
                   !gregoCoinPremium ||
                   fromExceedsBalance ||
-                  toExceedsBalance
+                  toExceedsBalance ||
+                  onboardingStatus === 'connecting_wallet' ||
+                  onboardingStatus === 'registering_contracts' ||
+                  onboardingStatus === 'simulating_queries'
                 }
-                onClick={() => {
-                  if (isUsingEmbeddedWallet) {
-                    setIsModalForSwap(true);
-                    setIsModalOpen(true);
-                  } else {
-                    doSwap();
-                  }
-                }}
+                onClick={handleSwapClick}
                 sx={{
                   mt: 3,
                   py: 2,
@@ -554,21 +674,28 @@ export function App() {
 
       {/* Wallet Connect Modal */}
       <WalletConnectModal
-        open={isModalOpen}
+        open={isWalletModalOpen && onboardingStatus === 'connecting_wallet'}
         onClose={() => {
-          setIsModalOpen(false);
-          setIsModalForSwap(false);
+          setIsWalletModalOpen(false);
         }}
         onAccountSelect={(address: AztecAddress) => {
           setCurrentAddress(address);
-
-          // Only trigger swap if modal was opened from swap button
-          if (isModalForSwap) {
-            setShouldExecuteSwap(true);
-            setIsModalForSwap(false);
-          }
+          setIsWalletModalOpen(false);
+          // Onboarding flow will continue in useEffect
         }}
       />
+
+      {/* Onboarding Progress Modal */}
+      <OnboardingModal
+        open={
+          onboardingStatus === 'registering_contracts' ||
+          onboardingStatus === 'simulating_queries' ||
+          onboardingStatus === 'error'
+        }
+      />
+
+      {/* Swap Transition Modal */}
+      <SwapTransition open={showTransition} onComplete={handleTransitionComplete} />
     </ThemeProvider>
   );
 }
