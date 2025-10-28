@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -12,10 +12,15 @@ import {
   ListItemIcon,
   ListItemText,
   LinearProgress,
+  ListItemButton,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
 import { useOnboarding } from '../contexts/OnboardingContext';
+import { useWallet } from '../contexts/WalletContext';
+import type { AztecAddress } from '@aztec/aztec.js/addresses';
+import type { Aliased } from '@aztec/aztec.js/wallet';
+import { Fr } from '@aztec/aztec.js/fields';
 
 interface OnboardingStep {
   label: string;
@@ -32,21 +37,60 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     description: 'Setting up token contracts in your wallet',
   },
   {
-    label: 'Prepare Queries',
-    description: 'Batching read operations for approval',
-  },
-  {
-    label: 'Approve in Wallet',
-    description: 'Review and approve queries in your wallet extension',
+    label: 'Approve Queries',
+    description: 'Review and approve batched queries in your wallet',
   },
 ];
 
 interface OnboardingModalProps {
   open: boolean;
+  onAccountSelect: (address: AztecAddress) => void;
 }
 
-export function OnboardingModal({ open }: OnboardingModalProps) {
+export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps) {
   const { status, error, currentStep, totalSteps, resetOnboarding } = useOnboarding();
+  const { connectWallet } = useWallet();
+  const [accounts, setAccounts] = useState<Aliased<AztecAddress>[]>([]);
+  const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
+  const [accountsError, setAccountsError] = useState<string | null>(null);
+
+  // Fetch accounts when modal opens and status is connecting_wallet
+  useEffect(() => {
+    async function fetchAccounts() {
+      if (!open || status !== 'connecting_wallet') return;
+
+      try {
+        setIsLoadingAccounts(true);
+        setAccountsError(null);
+        setAccounts([]);
+
+        // Construct ChainInfo from env variables
+        const chainInfo = {
+          chainId: Fr.fromString(import.meta.env.VITE_CHAIN_ID || '31337'),
+          version: Fr.fromString(import.meta.env.VITE_ROLLUP_VERSION || '1681471542'),
+        };
+
+        // Connect to extension wallet
+        const extensionWallet = await connectWallet(chainInfo);
+
+        // Get accounts from extension wallet
+        const walletAccounts = await extensionWallet.getAccounts();
+
+        if (!walletAccounts || walletAccounts.length === 0) {
+          throw new Error('No accounts found in wallet. Please create an account in your Aztec wallet.');
+        }
+
+        setAccounts(walletAccounts);
+        setIsLoadingAccounts(false);
+      } catch (err) {
+        console.error('Failed to fetch accounts:', err);
+        setAccountsError(err instanceof Error ? err.message : 'Failed to connect to wallet');
+        setIsLoadingAccounts(false);
+      }
+    }
+
+    fetchAccounts();
+  }, [open, status, connectWallet]);
 
   // Auto-close on completion (parent will handle this)
   useEffect(() => {
@@ -61,8 +105,15 @@ export function OnboardingModal({ open }: OnboardingModalProps) {
     return 'pending';
   };
 
+  const handleAccountSelect = (address: AztecAddress) => {
+    onAccountSelect(address);
+  };
+
   const isLoading = status !== 'not_started' && status !== 'completed' && status !== 'error';
   const progress = (currentStep / totalSteps) * 100;
+
+  // Show account selection UI when in connecting_wallet status
+  const showAccountSelection = status === 'connecting_wallet' && !isLoadingAccounts && accounts.length > 0;
 
   return (
     <Dialog
@@ -104,7 +155,7 @@ export function OnboardingModal({ open }: OnboardingModalProps) {
         </Box>
 
         {/* Error Display */}
-        {error && (
+        {(error || accountsError) && (
           <Alert
             severity="error"
             sx={{ mb: 3 }}
@@ -118,8 +169,58 @@ export function OnboardingModal({ open }: OnboardingModalProps) {
               </Typography>
             }
           >
-            {error}
+            {error || accountsError}
           </Alert>
+        )}
+
+        {/* Account Selection UI */}
+        {showAccountSelection && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Select an account to continue:
+            </Typography>
+            <List sx={{ pt: 0 }}>
+              {accounts.map((account, index) => {
+                const alias = account.alias || `Account ${index + 1}`;
+                const addressStr = account.item.toString();
+
+                return (
+                  <ListItem key={addressStr} disablePadding sx={{ mb: 1 }}>
+                    <ListItemButton
+                      onClick={() => handleAccountSelect(account.item)}
+                      sx={{
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        '&:hover': {
+                          borderColor: 'primary.main',
+                          backgroundColor: 'rgba(212, 255, 40, 0.05)',
+                        },
+                      }}
+                    >
+                      <ListItemText
+                        primary={
+                          <Typography variant="body1" fontWeight={600}>
+                            {alias}
+                          </Typography>
+                        }
+                        secondary={
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              fontFamily: 'monospace',
+                              wordBreak: 'break-all',
+                            }}
+                          >
+                            {addressStr}
+                          </Typography>
+                        }
+                      />
+                    </ListItemButton>
+                  </ListItem>
+                );
+              })}
+            </List>
+          </Box>
         )}
 
         {/* Steps List */}
@@ -173,19 +274,22 @@ export function OnboardingModal({ open }: OnboardingModalProps) {
         </List>
 
         {/* Additional Instructions */}
-        {status === 'connecting_wallet' && (
+        {status === 'connecting_wallet' && isLoadingAccounts && (
           <Box
             sx={{
-              mt: 3,
-              p: 2,
-              backgroundColor: 'rgba(212, 255, 40, 0.05)',
-              border: '1px solid',
-              borderColor: 'rgba(212, 255, 40, 0.2)',
-              borderRadius: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              py: 2,
+              gap: 2,
             }}
           >
-            <Typography variant="body2" color="text.secondary">
-              Please check your Aztec wallet extension to continue
+            <Typography variant="body2" color="text.secondary" textAlign="center">
+              Waiting for wallet to respond...
+            </Typography>
+            <Typography variant="caption" color="text.secondary" textAlign="center">
+              Please check your Aztec wallet extension
             </Typography>
           </Box>
         )}

@@ -39,7 +39,7 @@ interface OnboardingProviderProps {
   children: ReactNode;
 }
 
-const TOTAL_STEPS = 4; // Connect, Register, Simulate, Complete
+const TOTAL_STEPS = 3; // Connect, Register, Simulate/Approve
 
 // Helper to set onboarding status in localStorage
 function setStoredOnboardingStatus(address: AztecAddress | null, completed: boolean) {
@@ -69,7 +69,7 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
       case 'simulating_queries':
         return 3;
       case 'completed':
-        return 4;
+        return 3;
       case 'error':
         return 0;
       default:

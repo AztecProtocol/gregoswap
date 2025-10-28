@@ -22,7 +22,7 @@ export function SwapTransition({ open, onComplete }: SwapTransitionProps) {
         setShowSwap(true);
       }, 800);
 
-      // Complete transition after 2000ms total
+      // Complete transition and trigger swap after 2000ms total
       const completeTimer = setTimeout(() => {
         onComplete();
       }, 2000);

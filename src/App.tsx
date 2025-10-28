@@ -101,8 +101,10 @@ export function App() {
   const [exchangeRate, setExchangeRate] = useState<number | undefined>(undefined);
   const [isLoadingRate, setIsLoadingRate] = useState(false);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
+  const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false);
   const [showTransition, setShowTransition] = useState(false);
   const [swapError, setSwapError] = useState<string | null>(null);
+  const swapErrorRef = useRef<HTMLDivElement | null>(null);
   const [isSwapping, setIsSwapping] = useState(false);
   const [swapPhase, setSwapPhase] = useState<'sending' | 'mining'>('sending');
 
@@ -266,10 +268,13 @@ export function App() {
     simulateOnboardingQueries,
   ]);
 
-  // After onboarding completes, show transition and execute swap if pending
+  // After onboarding completes, close modal, show transition and execute swap if pending
   useEffect(() => {
-    if (onboardingStatus === 'completed' && isSwapPending) {
-      setShowTransition(true);
+    if (onboardingStatus === 'completed') {
+      setIsOnboardingModalOpen(false);
+      if (isSwapPending) {
+        setShowTransition(true);
+      }
     }
   }, [onboardingStatus, isSwapPending]);
 
@@ -316,7 +321,7 @@ export function App() {
     if (isUsingEmbeddedWallet || onboardingStatus === 'not_started') {
       // Start onboarding flow with swap pending
       startOnboarding(true);
-      setIsWalletModalOpen(true);
+      setIsOnboardingModalOpen(true);
     } else if (onboardingStatus === 'completed') {
       // Already onboarded, execute swap directly
       doSwap();
@@ -325,26 +330,34 @@ export function App() {
   };
 
   const doSwap = async () => {
+    console.log('[doSwap] Starting swap...');
+
     // Clear any previous errors
     setSwapError(null);
 
     if (!amm || !gregoCoin || !gregoCoinPremium || !fromAmount || parseFloat(fromAmount) <= 0) {
       const errorMsg = 'Cannot perform swap: Missing data or invalid amount';
-      console.error(errorMsg);
+      console.error('[doSwap] Validation failed:', errorMsg);
       setSwapError(errorMsg);
       return;
     }
 
     setIsSwapping(true);
     setSwapPhase('sending'); // Start with sending phase
+
     try {
+      console.log('[doSwap] Calling swap function...');
       await swap(
         gregoCoin.address,
         gregoCoinPremium.address,
         parseFloat(toAmount),
         parseFloat(fromAmount) * 1.1,
-        (phase) => setSwapPhase(phase), // Update phase as swap progresses
+        (phase) => {
+          console.log('[doSwap] Phase changed to:', phase);
+          setSwapPhase(phase);
+        },
       );
+      console.log('[doSwap] Swap completed successfully!');
       // Clear inputs on success
       setFromAmount('');
       setToAmount('');
@@ -366,18 +379,61 @@ export function App() {
         }
       }
     } catch (error) {
-      console.error('Swap failed:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Swap failed. Please try again.';
+      console.error('[doSwap] Swap failed - Raw error:', error);
+      console.error('[doSwap] Error type:', typeof error);
+      console.error('[doSwap] Error constructor:', error?.constructor?.name);
+
+      // Extract error message
+      let errorMessage = 'Swap failed. Please try again.';
+
+      try {
+        if (error instanceof Error) {
+          errorMessage = error.message;
+          console.log('[doSwap] Extracted from Error instance:', errorMessage);
+        } else if (typeof error === 'object' && error !== null) {
+          // Handle cases where error might be an object with a message property
+          const err = error as any;
+          if (err.message) {
+            errorMessage = err.message;
+            console.log('[doSwap] Extracted from error.message:', errorMessage);
+          } else if (err.error?.message) {
+            errorMessage = err.error.message;
+            console.log('[doSwap] Extracted from error.error.message:', errorMessage);
+          } else if (err.reason) {
+            errorMessage = err.reason;
+            console.log('[doSwap] Extracted from error.reason:', errorMessage);
+          } else {
+            errorMessage = JSON.stringify(error);
+            console.log('[doSwap] Stringified error object:', errorMessage);
+          }
+        } else if (typeof error === 'string') {
+          errorMessage = error;
+          console.log('[doSwap] Error is string:', errorMessage);
+        }
+      } catch (extractError) {
+        console.error('[doSwap] Failed to extract error message:', extractError);
+        errorMessage = 'An unexpected error occurred';
+      }
+
+      console.log('[doSwap] Final error message being set:', errorMessage);
       setSwapError(errorMessage);
+
+      // Scroll to error message after a short delay to ensure it's rendered
+      setTimeout(() => {
+        console.log('[doSwap] Scrolling to error message');
+        swapErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 100);
     } finally {
+      console.log('[doSwap] Resetting isSwapping to false');
       setIsSwapping(false);
     }
   };
 
   const handleTransitionComplete = () => {
-    setShowTransition(false);
     clearSwapPending();
-    // Now execute the swap
+    // Close transition to show the main UI where swap progress will be visible
+    setShowTransition(false);
+    // Execute the swap - errors will be shown in the main UI
     doSwap();
   };
 
@@ -625,6 +681,7 @@ export function App() {
             {/* Error Display */}
             <Collapse in={!!swapError}>
               <Alert
+                ref={swapErrorRef}
                 severity="error"
                 onClose={() => setSwapError(null)}
                 sx={{
@@ -672,26 +729,30 @@ export function App() {
         </Container>
       </Box>
 
-      {/* Wallet Connect Modal */}
+      {/* Wallet Connect Modal - Only for non-onboarding wallet connection */}
       <WalletConnectModal
-        open={isWalletModalOpen && onboardingStatus === 'connecting_wallet'}
+        open={isWalletModalOpen && onboardingStatus !== 'connecting_wallet'}
         onClose={() => {
           setIsWalletModalOpen(false);
         }}
         onAccountSelect={(address: AztecAddress) => {
           setCurrentAddress(address);
           setIsWalletModalOpen(false);
-          // Onboarding flow will continue in useEffect
         }}
       />
 
-      {/* Onboarding Progress Modal */}
+      {/* Onboarding Modal - Handles the full onboarding flow */}
       <OnboardingModal
-        open={
+        open={isOnboardingModalOpen && (
+          onboardingStatus === 'connecting_wallet' ||
           onboardingStatus === 'registering_contracts' ||
           onboardingStatus === 'simulating_queries' ||
           onboardingStatus === 'error'
-        }
+        )}
+        onAccountSelect={(address: AztecAddress) => {
+          setCurrentAddress(address);
+          // Onboarding flow will continue in useEffect
+        }}
       />
 
       {/* Swap Transition Modal */}

@@ -191,26 +191,65 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
       amountInMax: number,
       onPhaseChange?: (phase: 'sending' | 'mining') => void,
     ) => {
+      console.log('[swap] Starting swap in ContractsContext');
+
       if (!wallet) throw new Error('Wallet not initialized');
       if (!amm) throw new Error('AMM contract not initialized');
       if (!currentAddress) throw new Error('No current address set');
       if (!gregoCoin || !gregoCoinPremium) throw new Error('Token contracts not initialized');
 
       const authwitNonce = Fr.random();
+      console.log('[swap] Generated authwit nonce');
 
-      // Send the transaction and get the SentTx object
-      const sentTx = await amm.methods
-        .swap_tokens_for_exact_tokens(
-          tokenIn,
-          tokenOut,
-          BigInt(Math.round(amountOut)),
-          BigInt(Math.round(amountInMax)),
-          authwitNonce,
-        )
-        .send({ from: currentAddress });
+      try {
+        console.log('[swap] Calling .send() on AMM contract...');
 
-      // Use the utility to wait for tx with proper phase tracking
-      await waitForTxWithPhases(sentTx, onPhaseChange);
+        // Send the transaction and get the SentTx object
+        const sentTx = await amm.methods
+          .swap_tokens_for_exact_tokens(
+            tokenIn,
+            tokenOut,
+            BigInt(Math.round(amountOut)),
+            BigInt(Math.round(amountInMax)),
+            authwitNonce,
+          )
+          .send({ from: currentAddress });
+
+        console.log('[swap] Transaction sent, got SentTx object');
+
+        // Use the utility to wait for tx with proper phase tracking
+        console.log('[swap] Waiting for transaction completion...');
+        await waitForTxWithPhases(sentTx, onPhaseChange);
+        console.log('[swap] Transaction completed successfully');
+      } catch (error) {
+        console.error('[swap] Error in swap function:', error);
+
+        // Enhance error messages for common wallet errors
+        if (error instanceof Error) {
+          console.log('[swap] Error is Error instance, message:', error.message);
+
+          // Check for simulation failures - these are contract-level errors
+          if (error.message.includes('Simulation failed')) {
+            console.log('[swap] Simulation failed, re-throwing original error');
+            throw error; // Re-throw simulation errors as-is for detailed error message
+          }
+
+          if (error.message.includes('User rejected') || error.message.includes('rejected')) {
+            const enhancedError = new Error('Transaction was rejected in wallet');
+            console.log('[swap] Throwing enhanced rejection error');
+            throw enhancedError;
+          }
+          if (error.message.includes('Insufficient') || error.message.includes('insufficient')) {
+            const enhancedError = new Error('Insufficient balance for swap');
+            console.log('[swap] Throwing enhanced insufficient balance error');
+            throw enhancedError;
+          }
+        }
+
+        // Re-throw to be caught in App.tsx
+        console.log('[swap] Re-throwing error to App.tsx');
+        throw error;
+      }
     },
     [wallet, amm, currentAddress, gregoCoin, gregoCoinPremium],
   );
