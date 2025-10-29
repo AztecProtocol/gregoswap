@@ -9,7 +9,7 @@
     "serve": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "compile-dependencies": "WORKDIR=$(pwd) && cd $HOME/nargo/github.com/AztecProtocol/aztec-packages/v3.0.0-nightly.20251026/noir-projects/noir-contracts && aztec-nargo compile --package token_contract && aztec-postprocess-contract && cp $HOME/nargo/github.com/AztecProtocol/aztec-packages/v3.0.0-nightly.20251026/noir-projects/noir-contracts/target/token_contract-Token.json $WORKDIR/contracts/target/token_contract-Token.json",
+    "compile-dependencies": "WORKDIR=$(pwd) && cd $HOME/nargo/github.com/AztecProtocol/aztec-packages/v3.0.0-devnet.2/noir-projects/noir-contracts && aztec-nargo compile --package token_contract && aztec-postprocess-contract && cp $HOME/nargo/github.com/AztecProtocol/aztec-packages/v3.0.0-devnet.2/noir-projects/noir-contracts/target/token_contract-Token.json $WORKDIR/contracts/target/token_contract-Token.json",
     "compile-contracts": "cd contracts && aztec-nargo compile && aztec-postprocess-contract",
     "test": "cd contracts && aztec test",
     "preview": "vite preview",
@@ -18,13 +18,13 @@
     "formatting:fix": "run -T eslint --fix ./src && run -T prettier -w ./src"
   },
   "dependencies": {
-    "@aztec/accounts": "v3.0.0-nightly.20251026",
-    "@aztec/aztec.js": "v3.0.0-nightly.20251026",
-    "@aztec/entrypoints": "v3.0.0-nightly.20251026",
-    "@aztec/foundation": "v3.0.0-nightly.20251026",
-    "@aztec/noir-contracts.js": "v3.0.0-nightly.20251026",
-    "@aztec/pxe": "v3.0.0-nightly.20251026",
-    "@aztec/stdlib": "v3.0.0-nightly.20251026",
+    "@aztec/accounts": "v3.0.0-devnet.2",
+    "@aztec/aztec.js": "v3.0.0-devnet.2",
+    "@aztec/entrypoints": "v3.0.0-devnet.2",
+    "@aztec/foundation": "v3.0.0-devnet.2",
+    "@aztec/noir-contracts.js": "v3.0.0-devnet.2",
+    "@aztec/pxe": "v3.0.0-devnet.2",
+    "@aztec/stdlib": "v3.0.0-devnet.2",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
     "@mui/icons-material": "^6.3.1",
@@ -37,7 +37,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@aztec/test-wallet": "v3.0.0-nightly.20251026",
+    "@aztec/test-wallet": "v3.0.0-devnet.2",
     "@eslint/js": "^9.18.0",
     "@playwright/test": "1.49.0",
     "@types/buffer-json": "^2",

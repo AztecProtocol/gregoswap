@@ -38,25 +38,16 @@ class BigDecimal {
 }
 
 interface ContractsContextType {
-  gregoCoin: TokenContract | null;
-  gregoCoinPremium: TokenContract | null;
-  amm: AMMContract | null;
-  isLoading: boolean;
-  error: string | null;
-  gregoCoinBalance: bigint | null;
-  gregoCoinPremiumBalance: bigint | null;
-  isLoadingBalances: boolean;
+  isLoadingContracts: boolean;
   // Utility methods
   getExchangeRate: () => Promise<number>;
   swap: (
-    tokenIn: AztecAddress,
-    tokenOut: AztecAddress,
     amountOut: number,
     amountInMax: number,
     onPhaseChange?: (phase: 'sending' | 'mining') => void,
   ) => Promise<void>;
-  fetchBalances: () => Promise<void>;
-  simulateOnboardingQueries: () => Promise<void>;
+  fetchBalances: () => Promise<[bigint, bigint]>;
+  simulateOnboardingQueries: () => Promise<[number, bigint, bigint]>;
 }
 
 const ContractsContext = createContext<ContractsContextType | undefined>(undefined);
@@ -74,7 +65,7 @@ interface ContractsProviderProps {
 }
 
 // Helper function to get contract registration batch calls
-async function getContractRegistrationBatch(wallet: Wallet) {
+async function getContractRegistrationBatch() {
   const { TokenContractArtifact } = await import('@aztec/noir-contracts.js/Token');
   const { AMMContractArtifact } = await import('@aztec/noir-contracts.js/AMM');
   const gregoCoinAddress = AztecAddress.fromString(import.meta.env.VITE_GREGOCOIN_ADDRESS);
@@ -113,17 +104,13 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
   const [gregoCoin, setGregoCoin] = useState<TokenContract | null>(null);
   const [gregoCoinPremium, setGregoCoinPremium] = useState<TokenContract | null>(null);
   const [amm, setAmm] = useState<AMMContract | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [gregoCoinBalance, setGregoCoinBalance] = useState<bigint | null>(null);
-  const [gregoCoinPremiumBalance, setGregoCoinPremiumBalance] = useState<bigint | null>(null);
-  const [isLoadingBalances, setIsLoadingBalances] = useState(false);
+  const [isLoadingContracts, setIsLoadingContracts] = useState(true);
   const lastWallet = useRef<Wallet | null>(null);
 
   useEffect(() => {
     async function initializeContracts() {
       if (walletLoading || !wallet) {
-        setIsLoading(walletLoading);
+        setIsLoadingContracts(walletLoading);
         return;
       }
 
@@ -136,12 +123,10 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
       lastWallet.current = wallet;
 
       try {
-        setIsLoading(true);
-        setError(null);
-
+        setIsLoadingContracts(true);
         // Register contracts using the helper function
         // TODO: Remove 'as unknown as any' when correct types are exported from the library
-        const registrationBatch = await getContractRegistrationBatch(wallet);
+        const registrationBatch = await getContractRegistrationBatch();
         await wallet.batch(registrationBatch as unknown as any);
 
         // Instantiate contracts
@@ -159,11 +144,10 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         setGregoCoinPremium(gregoCoinPremiumContract);
         setAmm(ammContract);
 
-        setIsLoading(false);
+        setIsLoadingContracts(false);
       } catch (err) {
         console.error('Failed to initialize contracts:', err);
-        setError(err instanceof Error ? err.message : 'Unknown error occurred');
-        setIsLoading(false);
+        setIsLoadingContracts(false);
       }
     }
 
@@ -183,99 +167,86 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     return parseFloat(new BigDecimal(token1Reserve).divide(new BigDecimal(token0Reserve)).toString());
   };
 
-  const swap = useCallback(
-    async (
-      tokenIn: AztecAddress,
-      tokenOut: AztecAddress,
-      amountOut: number,
-      amountInMax: number,
-      onPhaseChange?: (phase: 'sending' | 'mining') => void,
-    ) => {
-      console.log('[swap] Starting swap in ContractsContext');
+  const swap = async (
+    amountOut: number,
+    amountInMax: number,
+    onPhaseChange?: (phase: 'sending' | 'mining') => void,
+  ) => {
+    console.log('[swap] Starting swap in ContractsContext');
 
-      if (!wallet) throw new Error('Wallet not initialized');
-      if (!amm) throw new Error('AMM contract not initialized');
-      if (!currentAddress) throw new Error('No current address set');
-      if (!gregoCoin || !gregoCoinPremium) throw new Error('Token contracts not initialized');
+    if (!wallet) throw new Error('Wallet not initialized');
+    if (!amm) throw new Error('AMM contract not initialized');
+    if (!currentAddress) throw new Error('No current address set');
+    if (!gregoCoin || !gregoCoinPremium) throw new Error('Token contracts not initialized');
 
-      const authwitNonce = Fr.random();
-      console.log('[swap] Generated authwit nonce');
+    const authwitNonce = Fr.random();
+    console.log('[swap] Generated authwit nonce');
 
-      try {
-        console.log('[swap] Calling .send() on AMM contract...');
+    try {
+      console.log('[swap] Calling .send() on AMM contract...');
 
-        // Send the transaction and get the SentTx object
-        const sentTx = await amm.methods
-          .swap_tokens_for_exact_tokens(
-            tokenIn,
-            tokenOut,
-            BigInt(Math.round(amountOut)),
-            BigInt(Math.round(amountInMax)),
-            authwitNonce,
-          )
-          .send({ from: currentAddress });
+      // Send the transaction and get the SentTx object
+      const sentTx = await amm.methods
+        .swap_tokens_for_exact_tokens(
+          gregoCoin.address,
+          gregoCoinPremium.address,
+          BigInt(Math.round(amountOut)),
+          BigInt(Math.round(amountInMax)),
+          authwitNonce,
+        )
+        .send({ from: currentAddress });
 
-        console.log('[swap] Transaction sent, got SentTx object');
+      console.log('[swap] Transaction sent, got SentTx object');
 
-        // Use the utility to wait for tx with proper phase tracking
-        console.log('[swap] Waiting for transaction completion...');
-        await waitForTxWithPhases(sentTx, onPhaseChange);
-        console.log('[swap] Transaction completed successfully');
-      } catch (error) {
-        console.error('[swap] Error in swap function:', error);
+      // Use the utility to wait for tx with proper phase tracking
+      console.log('[swap] Waiting for transaction completion...');
+      await waitForTxWithPhases(sentTx, onPhaseChange);
+      console.log('[swap] Transaction completed successfully');
+    } catch (error) {
+      console.error('[swap] Error in swap function:', error);
 
-        // Enhance error messages for common wallet errors
-        if (error instanceof Error) {
-          console.log('[swap] Error is Error instance, message:', error.message);
+      // Enhance error messages for common wallet errors
+      if (error instanceof Error) {
+        console.log('[swap] Error is Error instance, message:', error.message);
 
-          // Check for simulation failures - these are contract-level errors
-          if (error.message.includes('Simulation failed')) {
-            console.log('[swap] Simulation failed, re-throwing original error');
-            throw error; // Re-throw simulation errors as-is for detailed error message
-          }
-
-          if (error.message.includes('User rejected') || error.message.includes('rejected')) {
-            const enhancedError = new Error('Transaction was rejected in wallet');
-            console.log('[swap] Throwing enhanced rejection error');
-            throw enhancedError;
-          }
-          if (error.message.includes('Insufficient') || error.message.includes('insufficient')) {
-            const enhancedError = new Error('Insufficient balance for swap');
-            console.log('[swap] Throwing enhanced insufficient balance error');
-            throw enhancedError;
-          }
+        // Check for simulation failures - these are contract-level errors
+        if (error.message.includes('Simulation failed')) {
+          console.log('[swap] Simulation failed, re-throwing original error');
+          throw error; // Re-throw simulation errors as-is for detailed error message
         }
 
-        // Re-throw to be caught in App.tsx
-        console.log('[swap] Re-throwing error to App.tsx');
-        throw error;
+        if (error.message.includes('User rejected') || error.message.includes('rejected')) {
+          const enhancedError = new Error('Transaction was rejected in wallet');
+          console.log('[swap] Throwing enhanced rejection error');
+          throw enhancedError;
+        }
+        if (error.message.includes('Insufficient') || error.message.includes('insufficient')) {
+          const enhancedError = new Error('Insufficient balance for swap');
+          console.log('[swap] Throwing enhanced insufficient balance error');
+          throw enhancedError;
+        }
       }
-    },
-    [wallet, amm, currentAddress, gregoCoin, gregoCoinPremium],
-  );
 
-  const fetchBalances = useCallback(async () => {
+      // Re-throw to be caught in App.tsx
+      console.log('[swap] Re-throwing error to App.tsx');
+      throw error;
+    }
+  };
+
+  const fetchBalances = async () => {
     if (!wallet || !gregoCoin || !gregoCoinPremium || !currentAddress) {
       return;
     }
 
-    try {
-      setIsLoadingBalances(true);
-      const batchCall = new BatchCall(wallet, [
-        gregoCoin.methods.balance_of_private(currentAddress),
-        gregoCoinPremium.methods.balance_of_private(currentAddress),
-      ]);
-      const [gcBalance, gcpBalance] = await batchCall.simulate({ from: currentAddress });
-      setGregoCoinBalance(gcBalance);
-      setGregoCoinPremiumBalance(gcpBalance);
-    } catch (err) {
-      console.error('Failed to fetch balances:', err);
-    } finally {
-      setIsLoadingBalances(false);
-    }
-  }, [wallet, gregoCoin, gregoCoinPremium, currentAddress]);
+    const batchCall = new BatchCall(wallet, [
+      gregoCoin.methods.balance_of_private(currentAddress),
+      gregoCoinPremium.methods.balance_of_private(currentAddress),
+    ]);
+    const [gcBalance, gcpBalance] = await batchCall.simulate({ from: currentAddress });
+    return [gcBalance, gcpBalance] as [bigint, bigint];
+  };
 
-  const simulateOnboardingQueries = useCallback(async () => {
+  const simulateOnboardingQueries = async () => {
     if (!wallet || !gregoCoin || !gregoCoinPremium || !amm || !currentAddress) {
       throw new Error('Contracts not initialized');
     }
@@ -291,25 +262,13 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
       gregoCoinPremium.methods.balance_of_private(currentAddress),
     ]);
 
-    const [_token0Reserve, _token1Reserve, gcBalance, gcpBalance] = await batchCall.simulate({ from: currentAddress });
-
-    // Update state with the results
-    setGregoCoinBalance(gcBalance);
-    setGregoCoinPremiumBalance(gcpBalance);
-
-    // Note: token reserves are fetched to trigger wallet approval for exchange rate queries
-    // The actual exchange rate is calculated separately in getExchangeRate()
-  }, [wallet, gregoCoin, gregoCoinPremium, amm, currentAddress]);
+    const [token0Reserve, token1Reserve, gcBalance, gcpBalance] = await batchCall.simulate({ from: currentAddress });
+    const exchangeRate = parseFloat(new BigDecimal(token1Reserve).divide(new BigDecimal(token0Reserve)).toString());
+    return [exchangeRate, gcBalance, gcpBalance] as [number, bigint, bigint];
+  };
 
   const value: ContractsContextType = {
-    gregoCoin,
-    gregoCoinPremium,
-    amm,
-    isLoading,
-    error,
-    gregoCoinBalance,
-    gregoCoinPremiumBalance,
-    isLoadingBalances,
+    isLoadingContracts,
     getExchangeRate,
     swap,
     fetchBalances,
