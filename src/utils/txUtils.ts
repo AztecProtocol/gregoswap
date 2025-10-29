@@ -14,7 +14,7 @@ import { TxStatus } from '@aztec/stdlib/tx';
 export async function waitForTxWithPhases(
   sentTx: SentTx,
   onPhaseChange?: (phase: 'sending' | 'mining') => void,
-  pollInterval: number = 500,
+  pollInterval: number = 1000,
 ): Promise<void> {
   // Start in sending phase
   onPhaseChange?.('sending');

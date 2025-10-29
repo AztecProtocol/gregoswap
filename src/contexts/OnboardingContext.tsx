@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
+import { useWallet } from './WalletContext';
+import { useContracts } from './ContractsContext';
 
 export type OnboardingStatus =
   | 'not_started' // Using embedded wallet
@@ -12,17 +14,20 @@ export type OnboardingStatus =
 interface OnboardingState {
   status: OnboardingStatus;
   error: string | null;
-  isSwapPending: boolean; // True if swap should execute after onboarding
   currentStep: number; // Current step number (1-based)
   totalSteps: number; // Total number of steps
 }
 
+// Minimal API exposed to consumers
 interface OnboardingContextType extends OnboardingState {
-  startOnboarding: (withSwap: boolean) => void;
-  setStatus: (status: OnboardingStatus, error?: string) => void;
-  completeOnboarding: () => void;
-  resetOnboarding: () => void;
+  // Modal states
+  isOnboardingModalOpen: boolean;
+  isSwapPending: boolean;
+
+  // Actions
+  startOnboardingFlow: (withPendingSwap?: boolean) => void;
   clearSwapPending: () => void;
+  resetOnboarding: () => void;
 }
 
 const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
@@ -52,10 +57,18 @@ function setStoredOnboardingStatus(address: AztecAddress | null, completed: bool
 }
 
 export function OnboardingProvider({ children }: OnboardingProviderProps) {
+  // Pull from other contexts needed for flow orchestration
+  const { currentAddress, isUsingEmbeddedWallet } = useWallet();
+  const { simulateOnboardingQueries, isLoadingContracts } = useContracts();
+
+  // Internal state
   const [status, setStatusState] = useState<OnboardingStatus>('not_started');
   const [error, setError] = useState<string | null>(null);
   const [isSwapPending, setIsSwapPending] = useState(false);
-  const [currentAddress] = useState<AztecAddress | null>(null);
+  const [storedAddress] = useState<AztecAddress | null>(null);
+
+  // Flow state - modal visibility
+  const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false);
 
   // Calculate current step based on status
   const currentStep = (() => {
@@ -70,19 +83,12 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
         return 3;
       case 'completed':
         return 3;
-      case 'error':
-        return 0;
       default:
         return 0;
     }
   })();
 
-  const startOnboarding = useCallback((withSwap: boolean) => {
-    setStatusState('connecting_wallet');
-    setError(null);
-    setIsSwapPending(withSwap);
-  }, []);
-
+  // Internal helpers
   const setStatus = useCallback((newStatus: OnboardingStatus, errorMessage?: string) => {
     setStatusState(newStatus);
     if (errorMessage) {
@@ -96,36 +102,79 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     setStatusState('completed');
     setError(null);
     // Store completion in localStorage
-    setStoredOnboardingStatus(currentAddress, true);
-  }, [currentAddress]);
+    setStoredOnboardingStatus(storedAddress, true);
+  }, [storedAddress]);
+
+  // Onboarding orchestration - advance through steps
+  useEffect(() => {
+    async function handleOnboardingFlow() {
+      try {
+        // Step 1: After wallet connection, register contracts
+        if (status === 'connecting_wallet' && currentAddress && !isUsingEmbeddedWallet) {
+          setStatus('registering_contracts');
+        }
+
+        // Step 2: After contracts are registered, simulate queries
+        if (status === 'registering_contracts' && !isLoadingContracts && currentAddress) {
+          setStatus('simulating_queries');
+          await simulateOnboardingQueries();
+          completeOnboarding();
+        }
+      } catch (error) {
+        console.error('Onboarding error:', error);
+        setStatus('error', error instanceof Error ? error.message : 'Onboarding failed');
+      }
+    }
+
+    handleOnboardingFlow();
+  }, [
+    status,
+    currentAddress,
+    isUsingEmbeddedWallet,
+    isLoadingContracts,
+    setStatus,
+    completeOnboarding,
+    simulateOnboardingQueries,
+  ]);
+
+  // Keep modal open when completed if swap is pending (to show transition)
+  // Modal will be closed by parent after swap executes
+  useEffect(() => {
+    if (status === 'completed' && !isSwapPending) {
+      setIsOnboardingModalOpen(false);
+    }
+  }, [status, isSwapPending]);
+
+  // Public API
+  const startOnboardingFlow = useCallback((withPendingSwap = true) => {
+    setStatusState('connecting_wallet');
+    setError(null);
+    setIsSwapPending(withPendingSwap);
+    setIsOnboardingModalOpen(true);
+  }, []);
+
+  const clearSwapPending = useCallback(() => {
+    setIsSwapPending(false);
+    setIsOnboardingModalOpen(false);
+  }, []);
 
   const resetOnboarding = useCallback(() => {
     setStatusState('not_started');
     setError(null);
     setIsSwapPending(false);
-  }, []);
-
-  const clearSwapPending = useCallback(() => {
-    setIsSwapPending(false);
-  }, []);
-
-  // Check localStorage on mount and when address changes
-  useEffect(() => {
-    // This will be called from App when address changes
-    // For now, we just expose the methods
+    setIsOnboardingModalOpen(false);
   }, []);
 
   const value: OnboardingContextType = {
     status,
     error,
-    isSwapPending,
     currentStep,
     totalSteps: TOTAL_STEPS,
-    startOnboarding,
-    setStatus,
-    completeOnboarding,
-    resetOnboarding,
+    isOnboardingModalOpen,
+    isSwapPending,
+    startOnboardingFlow,
     clearSwapPending,
+    resetOnboarding,
   };
 
   return <OnboardingContext.Provider value={value}>{children}</OnboardingContext.Provider>;

@@ -14,7 +14,8 @@ interface WalletContextType {
   error: string | null;
   isUsingEmbeddedWallet: boolean;
   connectWallet: (chainInfo: ChainInfo) => Promise<Wallet>;
-  setCurrentAddress: (address: AztecAddress) => void;
+  setCurrentAddress: (address: AztecAddress | null) => void;
+  disconnectWallet: () => void;
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
@@ -39,6 +40,8 @@ export function WalletProvider({ children }: WalletProviderProps) {
   const [error, setError] = useState<string | null>(null);
   const [isUsingEmbeddedWallet, setIsUsingEmbeddedWallet] = useState(true);
   const initialized = useRef(false);
+  const embeddedWalletRef = useRef<Wallet | null>(null);
+  const embeddedAddressRef = useRef<AztecAddress | null>(null);
 
   useEffect(() => {
     // Prevent double initialization in StrictMode
@@ -64,6 +67,11 @@ export function WalletProvider({ children }: WalletProviderProps) {
 
         const embeddedWallet = await EmbeddedWallet.create(aztecNode);
         const defaultAccountAddress = (await embeddedWallet.getAccounts())[0]?.item;
+
+        // Store embedded wallet and address for later restoration
+        embeddedWalletRef.current = embeddedWallet;
+        embeddedAddressRef.current = defaultAccountAddress;
+
         setCurrentAddress(defaultAccountAddress);
         setWallet(embeddedWallet);
         setIsLoading(false);
@@ -88,6 +96,15 @@ export function WalletProvider({ children }: WalletProviderProps) {
     return extensionWallet;
   }, []);
 
+  const disconnectWallet = useCallback(() => {
+    // Restore embedded wallet and address
+    if (embeddedWalletRef.current) {
+      setWallet(embeddedWalletRef.current);
+      setCurrentAddress(embeddedAddressRef.current);
+      setIsUsingEmbeddedWallet(true);
+    }
+  }, []);
+
   const value: WalletContextType = {
     currentAddress,
     wallet,
@@ -97,6 +114,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
     isUsingEmbeddedWallet,
     connectWallet,
     setCurrentAddress,
+    disconnectWallet,
   };
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

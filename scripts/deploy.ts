@@ -163,8 +163,6 @@ async function writeEnvFile(deploymentInfo) {
     VITE_AMM_ADDRESS: deploymentInfo.ammAddress,
     VITE_CONTRACT_ADDRESS_SALT: deploymentInfo.contractAddressSalt,
     VITE_DEPLOYER_ADDRESS: deploymentInfo.deployerAddress,
-    DEPLOYER_SALT: deploymentInfo.deployerSalt,
-    DEPLOYER_SECRET_KEY: deploymentInfo.deployerSecretKey,
     VITE_AZTEC_NODE_URL: AZTEC_NODE_URL,
     VITE_CHAIN_ID: deploymentInfo.chainId,
     VITE_ROLLUP_VERSION: deploymentInfo.rollupVersion,

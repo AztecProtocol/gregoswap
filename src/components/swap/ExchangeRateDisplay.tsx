@@ -1,11 +1,16 @@
 import { Box, Typography, CircularProgress } from '@mui/material';
+import { useContracts } from '../../contexts/ContractsContext';
 
 interface ExchangeRateDisplayProps {
   exchangeRate: number | undefined;
-  isLoading: boolean;
+  isLoadingRate: boolean;
 }
 
-export function ExchangeRateDisplay({ exchangeRate, isLoading }: ExchangeRateDisplayProps) {
+export function ExchangeRateDisplay({ exchangeRate, isLoadingRate }: ExchangeRateDisplayProps) {
+  const { isLoadingContracts } = useContracts();
+
+  const isLoading = isLoadingContracts || isLoadingRate;
+
   return (
     <Box
       sx={{

@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useContracts } from '../contexts/ContractsContext';
-import { useWallet } from '../contexts/WalletContext';
 import { useOnboarding } from '../contexts/OnboardingContext';
+import { useWallet } from '../contexts/WalletContext';
+import { waitForTxWithPhases } from '../utils/txUtils';
 
 interface UseSwapProps {
   fromAmount: string;
@@ -9,13 +10,13 @@ interface UseSwapProps {
 }
 
 interface UseSwapReturn {
-  // USD values
-  fromAmountUSD: number;
-  toAmountUSD: number;
-
   // Exchange rate
   exchangeRate: number | undefined;
   isLoadingRate: boolean;
+
+  // USD values
+  fromAmountUSD: number;
+  toAmountUSD: number;
 
   // Validation
   canSwap: boolean;
@@ -34,23 +35,19 @@ const GREGOCOIN_USD_PRICE = 10;
 
 export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
   // Pull from contexts
-  const { getExchangeRate, swap, fetchBalances, isLoadingContracts } = useContracts();
-  const { isUsingEmbeddedWallet, currentAddress } = useWallet();
+  const { swap, isLoadingContracts, getExchangeRate } = useContracts();
   const { status: onboardingStatus } = useOnboarding();
-
-  // State for exchange rate
-  const [exchangeRate, setExchangeRate] = useState<number | undefined>(undefined);
-  const [isLoadingRate, setIsLoadingRate] = useState(false);
-  const isFetchingRateRef = useRef(false);
+  const { isUsingEmbeddedWallet, currentAddress } = useWallet();
 
   // State for swap
   const [isSwapping, setIsSwapping] = useState(false);
   const [swapPhase, setSwapPhase] = useState<'sending' | 'mining'>('sending');
   const [swapError, setSwapError] = useState<string | null>(null);
 
-  // Calculate USD values
-  const fromAmountUSD = fromAmount ? parseFloat(fromAmount) * GREGOCOIN_USD_PRICE : 0;
-  const toAmountUSD = toAmount && exchangeRate ? parseFloat(toAmount) * GREGOCOIN_USD_PRICE * exchangeRate : 0;
+  // State for exchange rate
+  const [exchangeRate, setExchangeRate] = useState<number | undefined>(undefined);
+  const [isLoadingRate, setIsLoadingRate] = useState(false);
+  const isFetchingRateRef = useRef(false);
 
   // Fetch exchange rate with auto-refresh every 10 seconds
   useEffect(() => {
@@ -61,7 +58,7 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
         onboardingStatus === 'connecting_wallet' ||
         onboardingStatus === 'simulating_queries' ||
         onboardingStatus === 'registering_contracts' ||
-        (!isUsingEmbeddedWallet && onboardingStatus !== 'completed');
+        (!isUsingEmbeddedWallet && currentAddress !== null && onboardingStatus !== 'completed');
 
       if (shouldPause) {
         setIsLoadingRate(false);
@@ -78,8 +75,6 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
         setIsLoadingRate(true);
         const rate = await getExchangeRate();
         setExchangeRate(rate);
-      } catch (err) {
-        console.error('Failed to fetch exchange rate:', err);
       } finally {
         setIsLoadingRate(false);
         isFetchingRateRef.current = false;
@@ -94,18 +89,17 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
       setIsLoadingRate(false);
       isFetchingRateRef.current = false;
     };
-  }, [isLoadingContracts, getExchangeRate, isSwapping, onboardingStatus, isUsingEmbeddedWallet]);
+  }, [isLoadingContracts, isSwapping, getExchangeRate, onboardingStatus, isUsingEmbeddedWallet, currentAddress]);
 
-  const executeSwap = async () => {
-    console.log('[useSwap] Starting swap...');
+  // Calculate USD values (simplified - just based on amount)
+  const fromAmountUSD = fromAmount ? parseFloat(fromAmount) * GREGOCOIN_USD_PRICE : 0;
+  const toAmountUSD = toAmount ? parseFloat(toAmount) * GREGOCOIN_USD_PRICE : 0;
 
-    // Clear any previous errors
+  const executeSwap = useCallback(async () => {
     setSwapError(null);
 
-    if (!isLoadingContracts || !fromAmount || parseFloat(fromAmount) <= 0) {
-      const errorMsg = 'Cannot perform swap: Missing data or invalid amount';
-      console.error('[useSwap] Validation failed:', errorMsg);
-      setSwapError(errorMsg);
+    if (isLoadingContracts || !fromAmount || parseFloat(fromAmount) <= 0) {
+      setSwapError('Cannot perform swap: Missing data or invalid amount');
       return;
     }
 
@@ -113,53 +107,29 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
     setSwapPhase('sending');
 
     try {
-      console.log('[useSwap] Calling swap function...');
-      await swap(parseFloat(toAmount), parseFloat(fromAmount) * 1.1, setSwapPhase);
-      console.log('[useSwap] Swap completed successfully!');
-
-      // Note: Exchange rate will auto-refresh via the polling effect
-      // Note: Parent component should handle clearing amounts by watching isSwapping state
-
-      // Refresh balances after successful swap
-      if (!isUsingEmbeddedWallet && currentAddress) {
-        try {
-          await fetchBalances();
-        } catch (err) {
-          console.error('Failed to refresh balances after swap:', err);
-        }
-      }
+      const sentTx = await swap(parseFloat(toAmount), parseFloat(fromAmount) * 1.1);
+      await waitForTxWithPhases(sentTx, setSwapPhase);
     } catch (error) {
-      console.error('[useSwap] Swap failed - Raw error:', error);
-
-      // Extract error message
       let errorMessage = 'Swap failed. Please try again.';
 
-      try {
-        if (error instanceof Error) {
+      if (error instanceof Error) {
+        // Check for common error patterns and enhance messages
+        if (error.message.includes('Simulation failed')) {
           errorMessage = error.message;
-        } else if (typeof error === 'object' && error !== null) {
-          const err = error as any;
-          if (err.message) {
-            errorMessage = err.message;
-          } else if (err.error?.message) {
-            errorMessage = err.error.message;
-          } else if (err.reason) {
-            errorMessage = err.reason;
-          } else {
-            errorMessage = JSON.stringify(error);
-          }
-        } else if (typeof error === 'string') {
-          errorMessage = error;
+        } else if (error.message.includes('User denied') || error.message.includes('rejected')) {
+          errorMessage = 'Transaction was rejected in wallet';
+        } else if (error.message.includes('Insufficient') || error.message.includes('insufficient')) {
+          errorMessage = 'Insufficient balance for swap';
+        } else {
+          errorMessage = error.message;
         }
-      } catch (extractError) {
-        errorMessage = 'An unexpected error occurred';
       }
 
       setSwapError(errorMessage);
     } finally {
       setIsSwapping(false);
     }
-  };
+  }, [isLoadingContracts, fromAmount, toAmount, swap]);
 
   const dismissError = () => {
     setSwapError(null);
@@ -175,10 +145,10 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
     onboardingStatus !== 'simulating_queries';
 
   return {
-    fromAmountUSD,
-    toAmountUSD,
     exchangeRate,
     isLoadingRate,
+    fromAmountUSD,
+    toAmountUSD,
     canSwap,
     isSwapping,
     swapPhase,

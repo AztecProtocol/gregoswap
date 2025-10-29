@@ -1,15 +1,22 @@
 import { Chip, Box } from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
 
 interface WalletChipProps {
   address: string | null;
   isConnected: boolean;
   onClick: () => void;
+  onDisconnect?: () => void;
 }
 
-export function WalletChip({ address, isConnected, onClick }: WalletChipProps) {
+export function WalletChip({ address, isConnected, onClick, onDisconnect }: WalletChipProps) {
   const displayText = isConnected && address
     ? `${address.slice(0, 6)}...${address.slice(-4)}`
     : 'Connect wallet';
+
+  const handleDelete = (event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent triggering onClick
+    onDisconnect?.();
+  };
 
   return (
     <Box
@@ -23,6 +30,8 @@ export function WalletChip({ address, isConnected, onClick }: WalletChipProps) {
       <Chip
         label={displayText}
         onClick={onClick}
+        onDelete={isConnected && onDisconnect ? handleDelete : undefined}
+        deleteIcon={<CloseIcon />}
         sx={{
           backgroundColor: 'rgba(212, 255, 40, 0.15)',
           border: '1px solid',
@@ -42,6 +51,13 @@ export function WalletChip({ address, isConnected, onClick }: WalletChipProps) {
           },
           '& .MuiChip-label': {
             px: 2,
+          },
+          '& .MuiChip-deleteIcon': {
+            color: 'primary.main',
+            fontSize: '1.2rem',
+            '&:hover': {
+              color: 'primary.main',
+            },
           },
         }}
       />

@@ -10,10 +10,10 @@ interface SwapBoxProps {
   balance?: bigint | null;
   showBalance?: boolean;
   onMaxClick?: () => void;
-  exceedsBalance?: boolean;
+  placeholder?: string;
 }
 
-export function SwapBox({ label, tokenName, value, onChange, disabled = false, usdValue, balance, showBalance = false, onMaxClick, exceedsBalance = false }: SwapBoxProps) {
+export function SwapBox({ label, tokenName, value, onChange, disabled = false, usdValue, balance, showBalance = false, onMaxClick, placeholder = '0.0' }: SwapBoxProps) {
   // Format balance: balance is stored as whole units (not wei)
   const formatBalance = (bal: bigint | null | undefined): string => {
     if (bal === null || bal === undefined) return '0.00';
@@ -40,8 +40,8 @@ export function SwapBox({ label, tokenName, value, onChange, disabled = false, u
     }
   };
 
-  // Use the exceedsBalance prop from parent (centralized validation)
-  const hasError = exceedsBalance;
+  // Calculate if value exceeds balance internally
+  const hasError = showBalance && balance !== null && value !== '' && parseFloat(value) > Number(balance);
 
   return (
     <Paper
@@ -107,7 +107,7 @@ export function SwapBox({ label, tokenName, value, onChange, disabled = false, u
           value={value}
           onChange={handleChange}
           disabled={disabled}
-          placeholder="0.0"
+          placeholder={placeholder}
           autoComplete="off"
           slotProps={{
             input: {

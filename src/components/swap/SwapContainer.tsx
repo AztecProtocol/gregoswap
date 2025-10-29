@@ -10,33 +10,28 @@ import { useContracts } from '../../contexts/ContractsContext';
 import { useWallet } from '../../contexts/WalletContext';
 import { useOnboarding } from '../../contexts/OnboardingContext';
 import { useSwap } from '../../hooks/useSwap';
+import { useBalances } from '../../hooks/useBalances';
 
-interface SwapContainerProps {
-  onStartOnboarding: () => void;
-}
-
-export function SwapContainer({ onStartOnboarding }: SwapContainerProps) {
-  const { isLoadingContracts, fetchBalances } = useContracts();
-
+export function SwapContainer() {
+  const { isLoadingContracts } = useContracts();
   const { isUsingEmbeddedWallet, currentAddress } = useWallet();
-  const { status: onboardingStatus, startOnboarding } = useOnboarding();
+  const { status: onboardingStatus, isSwapPending, clearSwapPending, startOnboardingFlow } = useOnboarding();
 
   const swapErrorRef = useRef<HTMLDivElement | null>(null);
 
-  // State for balances
-  const [gregoCoinBalance, setGregoCoinBalance] = useState<bigint | undefined>();
-  const [gregoCoinPremiumBalance, setGregoCoinPremiumBalance] = useState<bigint | undefined>();
+  // Get balances using the hook
+  const { balances, refetch: refetchBalances } = useBalances();
 
   // State for amounts
   const [fromAmount, setFromAmount] = useState('');
   const [toAmount, setToAmount] = useState('');
 
-  // Use swap hook for calculations, validation, exchange rate, and swap logic
+  // Use swap hook for calculations, validation, swap logic, and exchange rate
   const {
-    fromAmountUSD,
-    toAmountUSD,
     exchangeRate,
     isLoadingRate,
+    fromAmountUSD,
+    toAmountUSD,
     canSwap,
     isSwapping,
     swapPhase,
@@ -48,16 +43,44 @@ export function SwapContainer({ onStartOnboarding }: SwapContainerProps) {
     toAmount,
   });
 
-  // Track previous isSwapping state to detect completion
+  // Recalculate amounts when exchange rate becomes available
+  const prevExchangeRateRef = useRef(exchangeRate);
+  useEffect(() => {
+    const wasUnavailable = prevExchangeRateRef.current === undefined;
+    const isNowAvailable = exchangeRate !== undefined;
+
+    // If rate just became available, recalculate the empty field
+    if (wasUnavailable && isNowAvailable) {
+      if (fromAmount !== '' && toAmount === '') {
+        // Recalculate To amount from From amount
+        const numValue = parseFloat(fromAmount);
+        if (!isNaN(numValue)) {
+          setToAmount((numValue * exchangeRate).toFixed(6));
+        }
+      } else if (toAmount !== '' && fromAmount === '') {
+        // Recalculate From amount from To amount
+        const numValue = parseFloat(toAmount);
+        if (!isNaN(numValue)) {
+          setFromAmount((numValue / exchangeRate).toFixed(6));
+        }
+      }
+    }
+
+    prevExchangeRateRef.current = exchangeRate;
+  }, [exchangeRate, fromAmount, toAmount]);
+
+  // Track previous isSwapping state to detect completion and refresh balances
   const prevIsSwappingRef = useRef(isSwapping);
   useEffect(() => {
     // If swap just completed successfully (was swapping, now not swapping, no error)
     if (prevIsSwappingRef.current && !isSwapping && !swapError) {
       setFromAmount('');
       setToAmount('');
+      // Refresh balances after successful swap
+      refetchBalances();
     }
     prevIsSwappingRef.current = isSwapping;
-  }, [isSwapping, swapError]);
+  }, [isSwapping, swapError, refetchBalances]);
 
   // Handle amount changes with recalculation
   const handleFromChange = (value: string) => {
@@ -94,13 +117,26 @@ export function SwapContainer({ onStartOnboarding }: SwapContainerProps) {
     // Check if user needs onboarding
     if (isUsingEmbeddedWallet || onboardingStatus === 'not_started') {
       // Start onboarding flow with swap pending
-      startOnboarding(true);
-      onStartOnboarding();
+      startOnboardingFlow();
     } else if (onboardingStatus === 'completed') {
       // Already onboarded, execute swap directly
       executeSwap();
     }
   };
+
+  // Execute swap after onboarding completes with pending swap
+  // Wait 2 seconds for the transition animation in the modal to complete
+  useEffect(() => {
+    if (onboardingStatus === 'completed' && isSwapPending) {
+      executeSwap();
+      const timer = setTimeout(async () => {
+        // Close modal first while transition is still showing
+        clearSwapPending();
+      }, 2000); // Match the transition duration in OnboardingModal
+
+      return () => clearTimeout(timer);
+    }
+  }, [onboardingStatus, isSwapPending, executeSwap, clearSwapPending]);
 
   // Scroll to error when it appears
   useEffect(() => {
@@ -112,18 +148,29 @@ export function SwapContainer({ onStartOnboarding }: SwapContainerProps) {
   }, [swapError]);
 
   const handleMaxFromClick = () => {
-    if (gregoCoinBalance !== null) {
-      handleFromChange(gregoCoinBalance.toString());
+    if (balances.gregoCoin !== null) {
+      handleFromChange(balances.gregoCoin.toString());
     }
   };
 
   const handleMaxToClick = () => {
-    if (gregoCoinPremiumBalance !== null) {
-      handleToChange(gregoCoinPremiumBalance.toString());
+    if (balances.gregoCoinPremium !== null) {
+      handleToChange(balances.gregoCoinPremium.toString());
     }
   };
 
   const showBalance = !isUsingEmbeddedWallet && currentAddress !== null;
+
+  // Disable the opposite input when:
+  // 1. Swap is in progress
+  // 2. Exchange rate is loading/undefined and the other input has a value
+  const isRateUnavailable = isLoadingRate || exchangeRate === undefined;
+  const disableFromBox = isSwapping || (isRateUnavailable && toAmount !== '');
+  const disableToBox = isSwapping || (isRateUnavailable && fromAmount !== '');
+
+  // Show "..." placeholder in the disabled box when rate is unavailable
+  const fromPlaceholder = disableFromBox && isRateUnavailable ? '...' : '0.0';
+  const toPlaceholder = disableToBox && isRateUnavailable ? '...' : '0.0';
 
   return (
     <Paper
@@ -142,11 +189,12 @@ export function SwapContainer({ onStartOnboarding }: SwapContainerProps) {
         tokenName="GRG"
         value={fromAmount}
         onChange={handleFromChange}
-        disabled={isSwapping}
+        disabled={disableFromBox}
         usdValue={fromAmountUSD}
-        balance={gregoCoinBalance}
+        balance={balances.gregoCoin}
         showBalance={showBalance}
         onMaxClick={handleMaxFromClick}
+        placeholder={fromPlaceholder}
       />
 
       {/* Swap Direction Button */}
@@ -186,15 +234,16 @@ export function SwapContainer({ onStartOnboarding }: SwapContainerProps) {
         tokenName="GRGP"
         value={toAmount}
         onChange={handleToChange}
-        disabled={isSwapping}
+        disabled={disableToBox}
         usdValue={toAmountUSD * 5}
-        balance={gregoCoinPremiumBalance}
+        balance={balances.gregoCoinPremium}
         showBalance={showBalance}
         onMaxClick={handleMaxToClick}
+        placeholder={toPlaceholder}
       />
 
       {/* Exchange Rate Info */}
-      <ExchangeRateDisplay exchangeRate={exchangeRate} isLoading={isLoadingContracts || isLoadingRate} />
+      <ExchangeRateDisplay exchangeRate={exchangeRate} isLoadingRate={isLoadingRate} />
 
       {/* Swap Button or Progress */}
       {isSwapping ? (
