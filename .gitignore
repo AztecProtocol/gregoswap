@@ -31,3 +31,4 @@ bundlemeta.json
 test-results/
 .pxe-store
 contracts/target
+.env
