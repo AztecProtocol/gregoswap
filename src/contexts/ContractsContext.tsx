@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef, type ReactNode,
 import type { TokenContract } from '@aztec/noir-contracts.js/Token';
 import type { AMMContract } from '@aztec/noir-contracts.js/AMM';
 import { useWallet } from './WalletContext';
+import { useNetwork } from './NetworkContext';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { Fr } from '@aztec/aztec.js/fields';
@@ -60,32 +61,37 @@ interface ContractsProviderProps {
 }
 
 // Helper function to get contract registration batch calls
-async function getContractRegistrationBatch() {
+async function getContractRegistrationBatch(
+  gregoCoinAddress: AztecAddress,
+  gregoCoinPremiumAddress: AztecAddress,
+  liquidityTokenAddress: AztecAddress,
+  deployerAddress: AztecAddress,
+  contractSalt: Fr,
+) {
   const { TokenContractArtifact } = await import('@aztec/noir-contracts.js/Token');
   const { AMMContractArtifact } = await import('@aztec/noir-contracts.js/AMM');
-  const gregoCoinAddress = AztecAddress.fromString(import.meta.env.VITE_GREGOCOIN_ADDRESS);
-  const gregoCoinPremiumAddress = AztecAddress.fromString(import.meta.env.VITE_GREGOCOIN_PREMIUM_ADDRESS);
-  const liquidityTokenAddress = AztecAddress.fromString(import.meta.env.VITE_LIQUIDITY_TOKEN_ADDRESS);
-  const contractAddressSalt = Fr.fromString(import.meta.env.VITE_CONTRACT_ADDRESS_SALT);
-  const deployerAddress = AztecAddress.fromString(import.meta.env.VITE_DEPLOYER_ADDRESS);
 
+  // Reconstruct contract instances using the actual salt from deployment
+  console.log('[getContractRegistrationBatch] Reconstructing contract instances with salt:', contractSalt.toString());
   const [ammInstance, gregoCoinInstance, gregoCoinPremiumInstance] = await Promise.all([
     getContractInstanceFromInstantiationParams(AMMContractArtifact, {
-      salt: contractAddressSalt,
+      salt: contractSalt,
       deployer: deployerAddress,
       constructorArgs: [gregoCoinAddress, gregoCoinPremiumAddress, liquidityTokenAddress],
     }),
     getContractInstanceFromInstantiationParams(TokenContractArtifact, {
-      salt: contractAddressSalt,
+      salt: contractSalt,
       deployer: deployerAddress,
       constructorArgs: [deployerAddress, 'GregoCoin', 'GRG', 18],
     }),
     getContractInstanceFromInstantiationParams(TokenContractArtifact, {
-      salt: contractAddressSalt,
+      salt: contractSalt,
       deployer: deployerAddress,
       constructorArgs: [deployerAddress, 'GregoCoinPremium', 'GRGP', 18],
     }),
   ]);
+
+  console.log('[getContractRegistrationBatch] Contract instances reconstructed successfully');
 
   return [
     { name: 'registerContract' as const, args: [ammInstance, AMMContractArtifact, undefined] },
@@ -96,58 +102,98 @@ async function getContractRegistrationBatch() {
 
 export function ContractsProvider({ children }: ContractsProviderProps) {
   const { wallet, currentAddress, isLoading: walletLoading } = useWallet();
+  const { activeNetwork } = useNetwork();
   const [gregoCoin, setGregoCoin] = useState<TokenContract | null>(null);
   const [gregoCoinPremium, setGregoCoinPremium] = useState<TokenContract | null>(null);
   const [amm, setAmm] = useState<AMMContract | null>(null);
   const [isLoadingContracts, setIsLoadingContracts] = useState(true);
-  const lastWallet = useRef<Wallet | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function initializeContracts() {
+      console.log('[ContractsContext] useEffect triggered:', {
+        walletLoading,
+        hasWallet: !!wallet,
+        networkId: activeNetwork.id,
+        networkName: activeNetwork.name,
+      });
+
       if (walletLoading || !wallet) {
+        console.log('[ContractsContext] Wallet not ready, skipping');
         setIsLoadingContracts(walletLoading);
         return;
       }
 
-      // Reinitialize if wallet instance changed
-      if (lastWallet.current === wallet) {
-        // Same wallet instance, skip initialization
-        return;
-      }
-
-      lastWallet.current = wallet;
+      console.log('[ContractsContext] STARTING initialization...');
 
       try {
         setIsLoadingContracts(true);
+
+        console.log(`[ContractsContext] Initializing contracts for network: ${activeNetwork.name}`);
+
+        // Get contract addresses and salt from active network config
+        const gregoCoinAddress = AztecAddress.fromString(activeNetwork.contracts.gregoCoin);
+        const gregoCoinPremiumAddress = AztecAddress.fromString(activeNetwork.contracts.gregoCoinPremium);
+        const ammAddress = AztecAddress.fromString(activeNetwork.contracts.amm);
+        const liquidityTokenAddress = AztecAddress.fromString(activeNetwork.contracts.liquidityToken);
+        const deployerAddress = AztecAddress.fromString(activeNetwork.deployer.address);
+        const contractSalt = Fr.fromString(activeNetwork.contracts.salt);
+
         // Register contracts using the helper function
         // TODO: Remove 'as unknown as any' when correct types are exported from the library
-        const registrationBatch = await getContractRegistrationBatch();
+        const registrationBatch = await getContractRegistrationBatch(
+          gregoCoinAddress,
+          gregoCoinPremiumAddress,
+          liquidityTokenAddress,
+          deployerAddress,
+          contractSalt,
+        );
+
+        if (cancelled) return;
         await wallet.batch(registrationBatch as unknown as any);
 
+        if (cancelled) return;
         // Instantiate contracts
         const { TokenContract } = await import('@aztec/noir-contracts.js/Token');
         const { AMMContract } = await import('@aztec/noir-contracts.js/AMM');
-        const AMMAddress = AztecAddress.fromString(import.meta.env.VITE_AMM_ADDRESS);
-        const gregoCoinAddress = AztecAddress.fromString(import.meta.env.VITE_GREGOCOIN_ADDRESS);
-        const gregoCoinPremiumAddress = AztecAddress.fromString(import.meta.env.VITE_GREGOCOIN_PREMIUM_ADDRESS);
 
         const gregoCoinContract = await TokenContract.at(gregoCoinAddress, wallet);
         const gregoCoinPremiumContract = await TokenContract.at(gregoCoinPremiumAddress, wallet);
-        const ammContract = await AMMContract.at(AMMAddress, wallet);
+        const ammContract = await AMMContract.at(ammAddress, wallet);
+
+        if (cancelled) return;
 
         setGregoCoin(gregoCoinContract);
         setGregoCoinPremium(gregoCoinPremiumContract);
         setAmm(ammContract);
 
         setIsLoadingContracts(false);
+
+        console.log(`[ContractsContext] Contracts initialized successfully for ${activeNetwork.name}`);
       } catch (err) {
+        if (cancelled) return;
         console.error('Failed to initialize contracts:', err);
         setIsLoadingContracts(false);
       }
     }
 
+    console.log('[ContractsContext] Calling initializeContracts()...');
     initializeContracts();
-  }, [wallet, walletLoading]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet, walletLoading, activeNetwork]);
+
+  // Add a separate effect to log when dependencies change
+  useEffect(() => {
+    console.log('[ContractsContext] Dependencies changed:', {
+      hasWallet: !!wallet,
+      walletLoading,
+      networkId: activeNetwork.id,
+    });
+  }, [wallet, walletLoading, activeNetwork]);
 
   // Utility methods
 
@@ -162,24 +208,27 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     return parseFloat(new BigDecimal(token1Reserve).divide(new BigDecimal(token0Reserve)).toString());
   }, [amm, wallet, gregoCoin, gregoCoinPremium, currentAddress]);
 
-  const swap = useCallback(async (amountOut: number, amountInMax: number) => {
-    if (!wallet || !amm || !currentAddress || !gregoCoin || !gregoCoinPremium) {
-      throw new Error('Contracts not initialized');
-    }
+  const swap = useCallback(
+    async (amountOut: number, amountInMax: number) => {
+      if (!wallet || !amm || !currentAddress || !gregoCoin || !gregoCoinPremium) {
+        throw new Error('Contracts not initialized');
+      }
 
-    const authwitNonce = Fr.random();
-    const sentTx = await amm.methods
-      .swap_tokens_for_exact_tokens(
-        gregoCoin.address,
-        gregoCoinPremium.address,
-        BigInt(Math.round(amountOut)),
-        BigInt(Math.round(amountInMax)),
-        authwitNonce,
-      )
-      .send({ from: currentAddress });
+      const authwitNonce = Fr.random();
+      const sentTx = await amm.methods
+        .swap_tokens_for_exact_tokens(
+          gregoCoin.address,
+          gregoCoinPremium.address,
+          BigInt(Math.round(amountOut)),
+          BigInt(Math.round(amountInMax)),
+          authwitNonce,
+        )
+        .send({ from: currentAddress });
 
-    return sentTx;
-  }, [wallet, amm, currentAddress, gregoCoin, gregoCoinPremium]);
+      return sentTx;
+    },
+    [wallet, amm, currentAddress, gregoCoin, gregoCoinPremium],
+  );
 
   const fetchBalances = useCallback(async () => {
     if (!wallet || !gregoCoin || !gregoCoinPremium || !currentAddress) {

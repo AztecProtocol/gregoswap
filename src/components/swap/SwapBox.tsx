@@ -9,13 +9,16 @@ interface SwapBoxProps {
   usdValue?: number;
   balance?: bigint | null;
   showBalance?: boolean;
+  isLoadingBalance?: boolean;
   onMaxClick?: () => void;
   placeholder?: string;
 }
 
-export function SwapBox({ label, tokenName, value, onChange, disabled = false, usdValue, balance, showBalance = false, onMaxClick, placeholder = '0.0' }: SwapBoxProps) {
+export function SwapBox({ label, tokenName, value, onChange, disabled = false, usdValue, balance, showBalance = false, isLoadingBalance = false, onMaxClick, placeholder = '0.0' }: SwapBoxProps) {
   // Format balance: balance is stored as whole units (not wei)
-  const formatBalance = (bal: bigint | null | undefined): string => {
+  const formatBalance = (bal: bigint | null | undefined, loading: boolean): string => {
+    // If loading, always show "..." regardless of whether we have old data
+    if (loading) return '...';
     if (bal === null || bal === undefined) return '0.00';
     return Number(bal).toFixed(2);
   };
@@ -68,9 +71,9 @@ export function SwapBox({ label, tokenName, value, onChange, disabled = false, u
         {showBalance && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography variant="body2" color="text.secondary" fontWeight={500}>
-              Balance: {formatBalance(balance)}
+              Balance: {formatBalance(balance, isLoadingBalance)}
             </Typography>
-            {onMaxClick && balance !== null && balance !== undefined && Number(balance) > 0 && (
+            {onMaxClick && !isLoadingBalance && balance !== null && balance !== undefined && Number(balance) > 0 && (
               <Button
                 size="small"
                 onClick={onMaxClick}

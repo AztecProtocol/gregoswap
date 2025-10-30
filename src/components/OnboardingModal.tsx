@@ -23,7 +23,6 @@ import { useOnboarding } from '../contexts/OnboardingContext';
 import { useWallet } from '../contexts/WalletContext';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { Aliased } from '@aztec/aztec.js/wallet';
-import { Fr } from '@aztec/aztec.js/fields';
 
 interface OnboardingStep {
   label: string;
@@ -71,14 +70,8 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
         setAccountsError(null);
         setAccounts([]);
 
-        // Construct ChainInfo from env variables
-        const chainInfo = {
-          chainId: Fr.fromString(import.meta.env.VITE_CHAIN_ID || '31337'),
-          version: Fr.fromString(import.meta.env.VITE_ROLLUP_VERSION || '1681471542'),
-        };
-
-        // Connect to extension wallet
-        const extensionWallet = await connectWallet(chainInfo);
+        // Connect to extension wallet (ChainInfo is constructed from active network inside connectWallet)
+        const extensionWallet = await connectWallet();
 
         // Get accounts from extension wallet
         const walletAccounts = await extensionWallet.getAccounts();

@@ -17,13 +17,23 @@ interface UseBalancesReturn {
 export function useBalances(): UseBalancesReturn {
   const { fetchBalances } = useContracts();
   const { currentAddress, isUsingEmbeddedWallet } = useWallet();
-  const { status: onboardingStatus } = useOnboarding();
+  const { status: onboardingStatus, isSwapPending, onboardingResult } = useOnboarding();
 
   const [balances, setBalances] = useState<Balances>({
     gregoCoin: null,
     gregoCoinPremium: null,
   });
   const [isLoading, setIsLoading] = useState(false);
+
+  // Pre-populate balances from onboarding result when available
+  useEffect(() => {
+    if (onboardingResult && balances.gregoCoin === null && balances.gregoCoinPremium === null) {
+      setBalances({
+        gregoCoin: onboardingResult.balances.gregoCoin,
+        gregoCoinPremium: onboardingResult.balances.gregoCoinPremium,
+      });
+    }
+  }, [onboardingResult, balances.gregoCoin, balances.gregoCoinPremium]);
 
   const refetch = useCallback(async () => {
     // Only fetch for non-embedded wallets with an address
@@ -55,11 +65,12 @@ export function useBalances(): UseBalancesReturn {
       onboardingStatus === 'registering_contracts' ||
       onboardingStatus === 'simulating_queries';
 
-    // Fetch when: not using embedded wallet, has address, not onboarding, onboarding completed
-    if (!isUsingEmbeddedWallet && currentAddress && !isOnboarding && onboardingStatus === 'completed') {
+    // Fetch when: not using embedded wallet, has address, not onboarding, onboarding completed, no swap pending from onboarding
+    if (!isUsingEmbeddedWallet && currentAddress && !isOnboarding && onboardingStatus === 'completed' && !isSwapPending) {
       refetch();
     }
-  }, [isUsingEmbeddedWallet, currentAddress, onboardingStatus, refetch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isUsingEmbeddedWallet, currentAddress, onboardingStatus, isSwapPending]);
 
   return {
     balances,

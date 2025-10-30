@@ -11,6 +11,14 @@ export type OnboardingStatus =
   | 'completed' // Onboarded, ready for seamless ops
   | 'error'; // Something failed
 
+interface OnboardingResult {
+  exchangeRate: number;
+  balances: {
+    gregoCoin: bigint;
+    gregoCoinPremium: bigint;
+  };
+}
+
 interface OnboardingState {
   status: OnboardingStatus;
   error: string | null;
@@ -23,9 +31,11 @@ interface OnboardingContextType extends OnboardingState {
   // Modal states
   isOnboardingModalOpen: boolean;
   isSwapPending: boolean;
+  onboardingResult: OnboardingResult | null;
 
   // Actions
   startOnboardingFlow: (withPendingSwap?: boolean) => void;
+  closeModal: () => void;
   clearSwapPending: () => void;
   resetOnboarding: () => void;
 }
@@ -65,6 +75,7 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
   const [status, setStatusState] = useState<OnboardingStatus>('not_started');
   const [error, setError] = useState<string | null>(null);
   const [isSwapPending, setIsSwapPending] = useState(false);
+  const [onboardingResult, setOnboardingResult] = useState<OnboardingResult | null>(null);
   const [storedAddress] = useState<AztecAddress | null>(null);
 
   // Flow state - modal visibility
@@ -117,7 +128,14 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
         // Step 2: After contracts are registered, simulate queries
         if (status === 'registering_contracts' && !isLoadingContracts && currentAddress) {
           setStatus('simulating_queries');
-          await simulateOnboardingQueries();
+          const [exchangeRate, gcBalance, gcpBalance] = await simulateOnboardingQueries();
+          setOnboardingResult({
+            exchangeRate,
+            balances: {
+              gregoCoin: gcBalance,
+              gregoCoinPremium: gcpBalance,
+            },
+          });
           completeOnboarding();
         }
       } catch (error) {
@@ -153,6 +171,10 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     setIsOnboardingModalOpen(true);
   }, []);
 
+  const closeModal = useCallback(() => {
+    setIsOnboardingModalOpen(false);
+  }, []);
+
   const clearSwapPending = useCallback(() => {
     setIsSwapPending(false);
     setIsOnboardingModalOpen(false);
@@ -162,6 +184,7 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     setStatusState('not_started');
     setError(null);
     setIsSwapPending(false);
+    setOnboardingResult(null);
     setIsOnboardingModalOpen(false);
   }, []);
 
@@ -172,7 +195,9 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     totalSteps: TOTAL_STEPS,
     isOnboardingModalOpen,
     isSwapPending,
+    onboardingResult,
     startOnboardingFlow,
+    closeModal,
     clearSwapPending,
     resetOnboarding,
   };

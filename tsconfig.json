@@ -17,7 +17,8 @@
     "jsx": "react-jsx",
     "jsxImportSource": "@emotion/react",
     "verbatimModuleSyntax": true,
-    "allowArbitraryExtensions": true
+    "allowArbitraryExtensions": true,
+    "resolveJsonModule": true
   },
   "include": ["src/**/*.ts*", "tests/**/*.ts", "src/contracts/target/*.json", "artifacts/**/*.ts", "scripts/deploy.ts"]
 }

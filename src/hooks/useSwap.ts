@@ -36,7 +36,7 @@ const GREGOCOIN_USD_PRICE = 10;
 export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
   // Pull from contexts
   const { swap, isLoadingContracts, getExchangeRate } = useContracts();
-  const { status: onboardingStatus } = useOnboarding();
+  const { status: onboardingStatus, onboardingResult } = useOnboarding();
   const { isUsingEmbeddedWallet, currentAddress } = useWallet();
 
   // State for swap
@@ -49,9 +49,29 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
   const [isLoadingRate, setIsLoadingRate] = useState(false);
   const isFetchingRateRef = useRef(false);
 
+  // Pre-populate exchange rate from onboarding result when available
+  useEffect(() => {
+    if (onboardingResult && exchangeRate === undefined) {
+      setExchangeRate(onboardingResult.exchangeRate);
+    }
+  }, [onboardingResult, exchangeRate]);
+
+  // Reset exchange rate when contracts are loading (e.g., network switch)
+  useEffect(() => {
+    if (isLoadingContracts) {
+      setExchangeRate(undefined);
+      setIsLoadingRate(false);
+      isFetchingRateRef.current = false;
+    }
+  }, [isLoadingContracts]);
+
   // Fetch exchange rate with auto-refresh every 10 seconds
   useEffect(() => {
+    let cancelled = false;
+
     async function fetchExchangeRate() {
+      if (cancelled) return;
+
       const shouldPause =
         isLoadingContracts ||
         isSwapping ||
@@ -73,18 +93,42 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
       try {
         isFetchingRateRef.current = true;
         setIsLoadingRate(true);
+
+        // Check cancelled flag right before the async call
+        if (cancelled) {
+          isFetchingRateRef.current = false;
+          return;
+        }
+
         const rate = await getExchangeRate();
+        if (cancelled) return;
         setExchangeRate(rate);
       } finally {
-        setIsLoadingRate(false);
+        if (!cancelled) {
+          setIsLoadingRate(false);
+        }
         isFetchingRateRef.current = false;
       }
     }
 
-    fetchExchangeRate();
-    const intervalId = setInterval(fetchExchangeRate, 10000);
+    // Delay initial fetch by 100ms to let swap start if needed
+    // This prevents race condition when onboarding completes with pending swap
+    const initialTimeout = setTimeout(() => {
+      if (!cancelled) {
+        fetchExchangeRate();
+      }
+    }, 100);
+
+    // Set up interval for subsequent fetches
+    const intervalId = setInterval(() => {
+      if (!cancelled) {
+        fetchExchangeRate();
+      }
+    }, 10000);
 
     return () => {
+      cancelled = true;
+      clearTimeout(initialTimeout);
       clearInterval(intervalId);
       setIsLoadingRate(false);
       isFetchingRateRef.current = false;

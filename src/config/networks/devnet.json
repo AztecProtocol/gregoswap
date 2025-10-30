@@ -1,0 +1,18 @@
+{
+  "id": "devnet",
+  "name": "Devnet",
+  "nodeUrl": "https://devnet.aztec-labs.com",
+  "chainId": "11155111",
+  "rollupVersion": "1667575857",
+  "contracts": {
+    "gregoCoin": "0x136d54321ea07d6818aea7dc9eaf924aa2634f1d5bb95b5a22746860c5532181",
+    "gregoCoinPremium": "0x193ac4ac146e8cfe478d3e8feed4d5dae7dda5b317872157a059912e231b1b68",
+    "amm": "0x0b555cb8f33b8ad07ee9860e68070fbdfd34c662a4a7c9e4737e90eef94a3c38",
+    "liquidityToken": "0x037308fa40d255de66bc8402a62803ed5c795b80138b34e965931e76af0d5d63",
+    "salt": "0x06224873a2d8457de555f34d17b953f2b733bd369f3f4c855ddd57bd77dbf2cc"
+  },
+  "deployer": {
+    "address": "0x20268c42f855799173175841f671c0a811d6949fca1f669dd642c49a95e569d8"
+  },
+  "deployedAt": "2025-10-30T07:47:02.712Z"
+}

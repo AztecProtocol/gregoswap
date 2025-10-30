@@ -15,12 +15,15 @@ import { useBalances } from '../../hooks/useBalances';
 export function SwapContainer() {
   const { isLoadingContracts } = useContracts();
   const { isUsingEmbeddedWallet, currentAddress } = useWallet();
-  const { status: onboardingStatus, isSwapPending, clearSwapPending, startOnboardingFlow } = useOnboarding();
+  const { status: onboardingStatus, isSwapPending, closeModal, clearSwapPending, startOnboardingFlow } = useOnboarding();
 
   const swapErrorRef = useRef<HTMLDivElement | null>(null);
 
+  // Track if we're executing a swap that was triggered from onboarding
+  const [isExecutingOnboardingSwap, setIsExecutingOnboardingSwap] = useState(false);
+
   // Get balances using the hook
-  const { balances, refetch: refetchBalances } = useBalances();
+  const { balances, isLoading: isLoadingBalances, refetch: refetchBalances } = useBalances();
 
   // State for amounts
   const [fromAmount, setFromAmount] = useState('');
@@ -125,18 +128,41 @@ export function SwapContainer() {
   };
 
   // Execute swap after onboarding completes with pending swap
-  // Wait 2 seconds for the transition animation in the modal to complete
   useEffect(() => {
-    if (onboardingStatus === 'completed' && isSwapPending) {
+    if (onboardingStatus === 'completed' && isSwapPending && !isExecutingOnboardingSwap) {
+      console.log('[SwapContainer] Onboarding completed with pending swap, executing swap');
+      setIsExecutingOnboardingSwap(true);
       executeSwap();
-      const timer = setTimeout(async () => {
-        // Close modal first while transition is still showing
-        clearSwapPending();
-      }, 2000); // Match the transition duration in OnboardingModal
-
-      return () => clearTimeout(timer);
     }
-  }, [onboardingStatus, isSwapPending, executeSwap, clearSwapPending]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onboardingStatus, isSwapPending, isExecutingOnboardingSwap]);
+
+  // Close modal 2 seconds after swap starts (swap continues, isSwapPending stays true)
+  useEffect(() => {
+    if (isSwapPending && isExecutingOnboardingSwap) {
+      console.log('[SwapContainer] Swap started, setting timer to close modal in 2 seconds');
+      const timer = setTimeout(() => {
+        console.log('[SwapContainer] 2 seconds elapsed, closing modal (swap continues in background)');
+        closeModal();
+      }, 2000);
+
+      return () => {
+        console.log('[SwapContainer] Cleaning up timer');
+        clearTimeout(timer);
+      };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSwapPending, isExecutingOnboardingSwap]);
+
+  // Clear swap pending flag when swap actually completes
+  useEffect(() => {
+    if (isSwapPending && isExecutingOnboardingSwap && !isSwapping) {
+      console.log('[SwapContainer] Swap completed, clearing swap pending flag');
+      clearSwapPending();
+      setIsExecutingOnboardingSwap(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSwapPending, isExecutingOnboardingSwap, isSwapping]);
 
   // Scroll to error when it appears
   useEffect(() => {
@@ -161,16 +187,14 @@ export function SwapContainer() {
 
   const showBalance = !isUsingEmbeddedWallet && currentAddress !== null;
 
-  // Disable the opposite input when:
-  // 1. Swap is in progress
-  // 2. Exchange rate is loading/undefined and the other input has a value
-  const isRateUnavailable = isLoadingRate || exchangeRate === undefined;
-  const disableFromBox = isSwapping || (isRateUnavailable && toAmount !== '');
-  const disableToBox = isSwapping || (isRateUnavailable && fromAmount !== '');
+  // Only disable inputs when swap is in progress
+  const disableFromBox = isSwapping;
+  const disableToBox = isSwapping;
 
-  // Show "..." placeholder in the disabled box when rate is unavailable
-  const fromPlaceholder = disableFromBox && isRateUnavailable ? '...' : '0.0';
-  const toPlaceholder = disableToBox && isRateUnavailable ? '...' : '0.0';
+  // Show "..." placeholder when rate is unavailable and opposite box has value
+  const isRateUnavailable = isLoadingRate || exchangeRate === undefined;
+  const fromPlaceholder = isRateUnavailable && toAmount !== '' ? '...' : '0.0';
+  const toPlaceholder = isRateUnavailable && fromAmount !== '' ? '...' : '0.0';
 
   return (
     <Paper
@@ -193,6 +217,7 @@ export function SwapContainer() {
         usdValue={fromAmountUSD}
         balance={balances.gregoCoin}
         showBalance={showBalance}
+        isLoadingBalance={isLoadingBalances}
         onMaxClick={handleMaxFromClick}
         placeholder={fromPlaceholder}
       />
@@ -238,6 +263,7 @@ export function SwapContainer() {
         usdValue={toAmountUSD * 5}
         balance={balances.gregoCoinPremium}
         showBalance={showBalance}
+        isLoadingBalance={isLoadingBalances}
         onMaxClick={handleMaxToClick}
         placeholder={toPlaceholder}
       />

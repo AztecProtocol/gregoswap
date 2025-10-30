@@ -15,9 +15,32 @@ import { Fr } from '@aztec/foundation/fields';
 import type { DeployAccountOptions } from '@aztec/aztec.js/wallet';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 
-const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
+// Parse network from CLI args (--network <name>)
+function getNetworkFromArgs(): string {
+  const args = process.argv.slice(2);
+  const networkIndex = args.indexOf('--network');
+  if (networkIndex === -1 || networkIndex === args.length - 1) {
+    console.error('Usage: node deploy.ts --network <local|devnet>');
+    process.exit(1);
+  }
+  const network = args[networkIndex + 1];
+  if (!['local', 'devnet'].includes(network)) {
+    console.error(`Invalid network: ${network}. Must be 'local' or 'devnet'`);
+    process.exit(1);
+  }
+  return network;
+}
+
+const NETWORK = getNetworkFromArgs();
+
+// Network-specific node URLs (hardcoded, not configurable)
+const NETWORK_URLS: Record<string, string> = {
+  local: 'http://localhost:8080',
+  devnet: 'https://devnet.aztec-labs.com',
+};
+
+const AZTEC_NODE_URL = NETWORK_URLS[NETWORK];
 const PROVER_ENABLED = process.env.PROVER_ENABLED === 'false' ? false : true;
-const WRITE_ENV_FILE = process.env.WRITE_ENV_FILE === 'false' ? false : true;
 
 const MINT_TO = process.env.MINT_TO ? AztecAddress.fromString(process.env.MINT_TO) : undefined;
 
@@ -154,28 +177,44 @@ async function deployContracts(wallet: TestWallet, deployer: AztecAddress) {
   };
 }
 
-async function writeEnvFile(deploymentInfo) {
-  const envFilePath = path.join(import.meta.dirname, '../.env');
-  const envConfig = Object.entries({
-    VITE_GREGOCOIN_ADDRESS: deploymentInfo.gregoCoinAddress,
-    VITE_GREGOCOIN_PREMIUM_ADDRESS: deploymentInfo.gregoCoinPremiumAddress,
-    VITE_LIQUIDITY_TOKEN_ADDRESS: deploymentInfo.liquidityTokenAddress,
-    VITE_AMM_ADDRESS: deploymentInfo.ammAddress,
-    VITE_CONTRACT_ADDRESS_SALT: deploymentInfo.contractAddressSalt,
-    VITE_DEPLOYER_ADDRESS: deploymentInfo.deployerAddress,
-    VITE_AZTEC_NODE_URL: AZTEC_NODE_URL,
-    VITE_CHAIN_ID: deploymentInfo.chainId,
-    VITE_ROLLUP_VERSION: deploymentInfo.rollupVersion,
-  })
-    .map(([key, value]) => `${key}=${value}`)
-    .join('\n');
+async function writeNetworkConfig(network: string, deploymentInfo: any) {
+  const configDir = path.join(import.meta.dirname, '../src/config/networks');
+  fs.mkdirSync(configDir, { recursive: true });
 
-  fs.writeFileSync(envFilePath, envConfig);
+  const configPath = path.join(configDir, `${network}.json`);
+  const config = {
+    id: network,
+    name: network === 'local' ? 'Local Node' : 'Devnet',
+    nodeUrl: AZTEC_NODE_URL,
+    chainId: deploymentInfo.chainId,
+    rollupVersion: deploymentInfo.rollupVersion,
+    contracts: {
+      gregoCoin: deploymentInfo.gregoCoinAddress,
+      gregoCoinPremium: deploymentInfo.gregoCoinPremiumAddress,
+      amm: deploymentInfo.ammAddress,
+      liquidityToken: deploymentInfo.liquidityTokenAddress,
+      salt: deploymentInfo.contractAddressSalt,
+    },
+    deployer: {
+      address: deploymentInfo.deployerAddress,
+    },
+    deployedAt: new Date().toISOString(),
+  };
+
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
   console.log(`
       \n\n\n
-      Contracts deployed successfully. Config saved to ${envFilePath}
-      IMPORTANT: Do not lose this file as you will not be able to recover the contract address if you lose it.
+      Contracts deployed successfully to ${network}!
+      Network config saved to: ${configPath}
+
+      Deployed contracts:
+      - GregoCoin: ${deploymentInfo.gregoCoinAddress}
+      - GregoCoinPremium: ${deploymentInfo.gregoCoinPremiumAddress}
+      - AMM: ${deploymentInfo.ammAddress}
+      - Liquidity Token: ${deploymentInfo.liquidityTokenAddress}
+
+      Deployer: ${deploymentInfo.deployerAddress}
       \n\n\n
     `);
 }
@@ -190,7 +229,7 @@ async function createAccountAndDeployContract() {
   await wallet.registerContract(await getSponsoredPFCContract(), SponsoredFPCContractArtifact);
 
   // Create a new account
-  const { address: deployer, salt, secretKey } = await createAccount(wallet);
+  const { address: deployer } = await createAccount(wallet);
 
   // Deploy the contract
   const contractDeploymentInfo = await deployContracts(wallet, deployer);
@@ -199,13 +238,10 @@ async function createAccountAndDeployContract() {
     chainId: chainId.toString(),
     rollupVersion: rollupVersion.toString(),
     deployerAddress: deployer.toString(),
-    deployerSalt: salt.toString(),
-    deployerSecretKey: secretKey.toString(),
   };
-  // Save the deployment info to app/public
-  if (WRITE_ENV_FILE) {
-    await writeEnvFile(deploymentInfo);
-  }
+
+  // Save the network config to src/config/networks/
+  await writeNetworkConfig(NETWORK, deploymentInfo);
 
   // Clean up the PXE store
   fs.rmSync(PXE_STORE_DIR, { recursive: true, force: true });
