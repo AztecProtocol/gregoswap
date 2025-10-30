@@ -57,16 +57,10 @@ export function useBalances(): UseBalancesReturn {
     }
   }, [fetchBalances, currentAddress, isUsingEmbeddedWallet]);
 
-  // Auto-fetch on mount and when onboarding completes
+  // Auto-fetch when needed, but skip immediate fetch after onboarding without swap
   useEffect(() => {
-    // Don't fetch during onboarding - simulateOnboardingQueries handles it
-    const isOnboarding =
-      onboardingStatus === 'connecting_wallet' ||
-      onboardingStatus === 'registering_contracts' ||
-      onboardingStatus === 'simulating_queries';
-
-    // Fetch when: not using embedded wallet, has address, not onboarding, onboarding completed, no swap pending from onboarding
-    if (!isUsingEmbeddedWallet && currentAddress && !isOnboarding && onboardingStatus === 'completed' && !isSwapPending) {
+    // Only fetch when: not using embedded wallet, has address, not onboarding
+    if (!isUsingEmbeddedWallet && currentAddress && onboardingStatus !== 'completed' && isSwapPending) {
       refetch();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -25,7 +25,6 @@ export class ExtensionWallet {
         return;
       }
       if (!wallet.inFlight.has(messageId)) {
-        console.error('No in-flight message for id', messageId);
         return;
       }
       const { resolve, reject } = wallet.inFlight.get(messageId);

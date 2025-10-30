@@ -72,7 +72,6 @@ async function getContractRegistrationBatch(
   const { AMMContractArtifact } = await import('@aztec/noir-contracts.js/AMM');
 
   // Reconstruct contract instances using the actual salt from deployment
-  console.log('[getContractRegistrationBatch] Reconstructing contract instances with salt:', contractSalt.toString());
   const [ammInstance, gregoCoinInstance, gregoCoinPremiumInstance] = await Promise.all([
     getContractInstanceFromInstantiationParams(AMMContractArtifact, {
       salt: contractSalt,
@@ -90,8 +89,6 @@ async function getContractRegistrationBatch(
       constructorArgs: [deployerAddress, 'GregoCoinPremium', 'GRGP', 18],
     }),
   ]);
-
-  console.log('[getContractRegistrationBatch] Contract instances reconstructed successfully');
 
   return [
     { name: 'registerContract' as const, args: [ammInstance, AMMContractArtifact, undefined] },
@@ -112,25 +109,13 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     let cancelled = false;
 
     async function initializeContracts() {
-      console.log('[ContractsContext] useEffect triggered:', {
-        walletLoading,
-        hasWallet: !!wallet,
-        networkId: activeNetwork.id,
-        networkName: activeNetwork.name,
-      });
-
       if (walletLoading || !wallet) {
-        console.log('[ContractsContext] Wallet not ready, skipping');
         setIsLoadingContracts(walletLoading);
         return;
       }
 
-      console.log('[ContractsContext] STARTING initialization...');
-
       try {
         setIsLoadingContracts(true);
-
-        console.log(`[ContractsContext] Initializing contracts for network: ${activeNetwork.name}`);
 
         // Get contract addresses and salt from active network config
         const gregoCoinAddress = AztecAddress.fromString(activeNetwork.contracts.gregoCoin);
@@ -169,30 +154,17 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         setAmm(ammContract);
 
         setIsLoadingContracts(false);
-
-        console.log(`[ContractsContext] Contracts initialized successfully for ${activeNetwork.name}`);
       } catch (err) {
         if (cancelled) return;
-        console.error('Failed to initialize contracts:', err);
         setIsLoadingContracts(false);
       }
     }
 
-    console.log('[ContractsContext] Calling initializeContracts()...');
     initializeContracts();
 
     return () => {
       cancelled = true;
     };
-  }, [wallet, walletLoading, activeNetwork]);
-
-  // Add a separate effect to log when dependencies change
-  useEffect(() => {
-    console.log('[ContractsContext] Dependencies changed:', {
-      hasWallet: !!wallet,
-      walletLoading,
-      networkId: activeNetwork.id,
-    });
   }, [wallet, walletLoading, activeNetwork]);
 
   // Utility methods

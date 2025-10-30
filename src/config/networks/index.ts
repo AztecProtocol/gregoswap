@@ -22,57 +22,32 @@ export interface NetworkConfig {
 const networkModules = import.meta.glob<{ default: NetworkConfig }>('./*.json', { eager: true });
 
 function loadNetworkConfigs(): NetworkConfig[] {
-  console.log('[loadNetworkConfigs] Starting to load network configs');
-  console.log('[loadNetworkConfigs] Found modules:', Object.keys(networkModules));
-
   const configs: NetworkConfig[] = [];
 
   // Load all JSON files in this directory
   for (const path in networkModules) {
     // Skip placeholder file
     if (path.includes('placeholder.json')) {
-      console.log('[loadNetworkConfigs] Skipping placeholder:', path);
       continue;
     }
 
-    console.log('[loadNetworkConfigs] Loading:', path);
     try {
       const module = networkModules[path];
-      console.log('[loadNetworkConfigs] Loaded module:', path, module);
       configs.push(module.default);
     } catch (err) {
       // Config file not available or invalid - silently ignore
-      console.warn(`[loadNetworkConfigs] Failed to load network config from ${path}:`, err);
     }
   }
 
-  console.log('[loadNetworkConfigs] Total configs loaded:', configs.length);
-
   // In production, exclude local network
   const filtered = import.meta.env.PROD ? configs.filter(n => n.id !== 'local') : configs;
-  console.log('[loadNetworkConfigs] After filtering:', filtered.length, 'configs');
 
   return filtered;
 }
 
 // Helper to initialize the networks (called by NetworkProvider)
 export function initializeNetworks(): NetworkConfig[] {
-  console.log('[initializeNetworks] Called');
-  const AVAILABLE_NETWORKS = loadNetworkConfigs();
-  console.log('[initializeNetworks] Loaded networks:', AVAILABLE_NETWORKS);
-
-  // Set default network: local in dev (if available), devnet otherwise
-  let DEFAULT_NETWORK = 'local';
-  if (import.meta.env.DEV && AVAILABLE_NETWORKS.some(n => n.id === 'local')) {
-    DEFAULT_NETWORK = 'local';
-  } else {
-    const devnet = AVAILABLE_NETWORKS.find(n => n.id === 'devnet');
-    DEFAULT_NETWORK = devnet?.id || AVAILABLE_NETWORKS[0]?.id || 'local';
-  }
-
-  console.log('[initializeNetworks] Default network:', DEFAULT_NETWORK);
-
-  return AVAILABLE_NETWORKS;
+  return loadNetworkConfigs();
 }
 
 // Helper to get network by id from an array

@@ -35,8 +35,6 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
 
     function loadNetworks() {
       try {
-        console.log('[NetworkContext] Loading network configurations...');
-
         const networks = initializeNetworks();
 
         if (cancelled) return;
@@ -60,7 +58,7 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
             initialNetwork = stored;
           }
         } catch (err) {
-          console.warn('Failed to load network from localStorage:', err);
+          // Silently fail - localStorage not available
         }
 
         if (cancelled) return;
@@ -74,12 +72,9 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
         }
 
         setIsLoading(false);
-
-        console.log(`[NetworkContext] Loaded ${networks.length} network(s), active: ${initialNetwork}`);
       } catch (err) {
         if (cancelled) return;
 
-        console.error('Failed to load networks:', err);
         throw err;
       }
     }
@@ -95,7 +90,6 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
     (networkId: string) => {
       const network = availableNetworks.find(n => n.id === networkId);
       if (!network) {
-        console.error(`Network ${networkId} not found`);
         return;
       }
 
@@ -105,7 +99,7 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
       try {
         localStorage.setItem(STORAGE_KEY, networkId);
       } catch (err) {
-        console.warn('Failed to save network to localStorage:', err);
+        // Silently fail - localStorage not available
       }
     },
     [availableNetworks],

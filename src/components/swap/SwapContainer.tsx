@@ -130,7 +130,6 @@ export function SwapContainer() {
   // Execute swap after onboarding completes with pending swap
   useEffect(() => {
     if (onboardingStatus === 'completed' && isSwapPending && !isExecutingOnboardingSwap) {
-      console.log('[SwapContainer] Onboarding completed with pending swap, executing swap');
       setIsExecutingOnboardingSwap(true);
       executeSwap();
     }
@@ -140,14 +139,11 @@ export function SwapContainer() {
   // Close modal 2 seconds after swap starts (swap continues, isSwapPending stays true)
   useEffect(() => {
     if (isSwapPending && isExecutingOnboardingSwap) {
-      console.log('[SwapContainer] Swap started, setting timer to close modal in 2 seconds');
       const timer = setTimeout(() => {
-        console.log('[SwapContainer] 2 seconds elapsed, closing modal (swap continues in background)');
         closeModal();
       }, 2000);
 
       return () => {
-        console.log('[SwapContainer] Cleaning up timer');
         clearTimeout(timer);
       };
     }
@@ -157,7 +153,6 @@ export function SwapContainer() {
   // Clear swap pending flag when swap actually completes
   useEffect(() => {
     if (isSwapPending && isExecutingOnboardingSwap && !isSwapping) {
-      console.log('[SwapContainer] Swap completed, clearing swap pending flag');
       clearSwapPending();
       setIsExecutingOnboardingSwap(false);
     }

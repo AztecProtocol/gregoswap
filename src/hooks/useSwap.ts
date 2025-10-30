@@ -36,7 +36,7 @@ const GREGOCOIN_USD_PRICE = 10;
 export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
   // Pull from contexts
   const { swap, isLoadingContracts, getExchangeRate } = useContracts();
-  const { status: onboardingStatus, onboardingResult } = useOnboarding();
+  const { status: onboardingStatus, onboardingResult, isSwapPending } = useOnboarding();
   const { isUsingEmbeddedWallet, currentAddress } = useWallet();
 
   // State for swap
@@ -72,17 +72,18 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
     async function fetchExchangeRate() {
       if (cancelled) return;
 
-      const shouldPause =
-        isLoadingContracts ||
-        isSwapping ||
-        onboardingStatus === 'connecting_wallet' ||
-        onboardingStatus === 'simulating_queries' ||
-        onboardingStatus === 'registering_contracts' ||
-        (!isUsingEmbeddedWallet && currentAddress !== null && onboardingStatus !== 'completed');
+      const isBusy = isLoadingContracts || isSwapping;
+      const isOnboardingInProgress = onboardingStatus !== 'completed';
 
-      if (shouldPause) {
+      if (isBusy || isOnboardingInProgress) {
         setIsLoadingRate(false);
         isFetchingRateRef.current = false;
+        return;
+      }
+
+      // Skip if we just completed onboarding without a swap and still have the result
+      // This waits for the next cycle instead of fetching immediately
+      if (onboardingResult && !isSwapPending && exchangeRate === onboardingResult.exchangeRate) {
         return;
       }
 
@@ -133,7 +134,17 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
       setIsLoadingRate(false);
       isFetchingRateRef.current = false;
     };
-  }, [isLoadingContracts, isSwapping, getExchangeRate, onboardingStatus, isUsingEmbeddedWallet, currentAddress]);
+  }, [
+    isLoadingContracts,
+    isSwapping,
+    getExchangeRate,
+    onboardingStatus,
+    isUsingEmbeddedWallet,
+    currentAddress,
+    onboardingResult,
+    isSwapPending,
+    exchangeRate,
+  ]);
 
   // Calculate USD values (simplified - just based on amount)
   const fromAmountUSD = fromAmount ? parseFloat(fromAmount) * GREGOCOIN_USD_PRICE : 0;

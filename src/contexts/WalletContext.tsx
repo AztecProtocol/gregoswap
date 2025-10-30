@@ -53,9 +53,6 @@ export function WalletProvider({ children }: WalletProviderProps) {
         setIsLoading(true);
         setError(null);
 
-        console.log(`[WalletContext] Initializing wallet for network: ${activeNetwork.name}`);
-        console.log(`[WalletContext] Node URL: ${activeNetwork.nodeUrl}`);
-
         // Get the node URL from active network
         const nodeUrl = activeNetwork.nodeUrl;
 
@@ -63,8 +60,6 @@ export function WalletProvider({ children }: WalletProviderProps) {
 
         if (cancelled) return;
         setNode(aztecNode);
-
-        console.log(`[WalletContext] Creating embedded wallet...`);
 
         // Add timeout to wallet creation (15 seconds)
         const walletPromise = EmbeddedWallet.create(aztecNode);
@@ -76,7 +71,6 @@ export function WalletProvider({ children }: WalletProviderProps) {
 
         if (cancelled) return;
 
-        console.log(`[WalletContext] Getting accounts...`);
         const defaultAccountAddress = (await embeddedWallet.getAccounts())[0]?.item;
 
         // Store embedded wallet and address for later restoration
@@ -88,12 +82,9 @@ export function WalletProvider({ children }: WalletProviderProps) {
         setCurrentAddress(defaultAccountAddress);
         setWallet(embeddedWallet);
         setIsLoading(false);
-
-        console.log(`[WalletContext] Wallet initialized successfully for ${activeNetwork.name}`);
       } catch (err) {
         if (cancelled) return;
 
-        console.error('Failed to initialize wallet:', err);
         const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
 
         // Add helpful message for connection issues

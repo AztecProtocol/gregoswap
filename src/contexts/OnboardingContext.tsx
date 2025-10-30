@@ -139,7 +139,6 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
           completeOnboarding();
         }
       } catch (error) {
-        console.error('Onboarding error:', error);
         setStatus('error', error instanceof Error ? error.message : 'Onboarding failed');
       }
     }

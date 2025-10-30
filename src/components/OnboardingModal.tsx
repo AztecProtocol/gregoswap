@@ -83,7 +83,6 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
         setAccounts(walletAccounts);
         setIsLoadingAccounts(false);
       } catch (err) {
-        console.error('Failed to fetch accounts:', err);
         setAccountsError(err instanceof Error ? err.message : 'Failed to connect to wallet');
         setIsLoadingAccounts(false);
       }
