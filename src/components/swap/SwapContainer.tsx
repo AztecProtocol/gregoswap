@@ -130,21 +130,26 @@ export function SwapContainer() {
     }
   };
 
+  // Track if swap was triggered after onboarding
+  const swapTriggeredAfterOnboardingRef = useRef(false);
+
   useEffect(() => {
     if (onboardingStatus === 'completed' && isSwapPending) {
       executeSwap();
+      swapTriggeredAfterOnboardingRef.current = true;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onboardingStatus, isSwapPending]);
 
-  // Clear swap pending flag when swap completes
-  // Only clear if onboarding is completed (otherwise it's still in progress)
+  // Clear swap pending flag only after swap actually completes
+  // (not just when onboarding completes but before swap starts)
   useEffect(() => {
-    if (isSwapPending && !isSwapping && onboardingStatus === 'completed') {
+    if (swapTriggeredAfterOnboardingRef.current && isSwapPending && !isSwapping) {
+      swapTriggeredAfterOnboardingRef.current = false;
       clearSwapPending();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSwapPending, isSwapping, onboardingStatus]);
+  }, [isSwapPending, isSwapping]);
 
   // Scroll to error when it appears
   useEffect(() => {
