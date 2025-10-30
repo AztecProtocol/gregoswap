@@ -51,7 +51,7 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
 
   // Pre-populate exchange rate from onboarding result when available
   useEffect(() => {
-    if (onboardingResult && exchangeRate === undefined) {
+    if (onboardingResult) {
       setExchangeRate(onboardingResult.exchangeRate);
     }
   }, [onboardingResult, exchangeRate]);
@@ -68,12 +68,11 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
   // Fetch exchange rate with auto-refresh every 10 seconds
   useEffect(() => {
     async function fetchExchangeRate() {
-      const isBusy = isLoadingContracts || isSwapping;
-      const isOnboardingInProgress = onboardingStatus !== 'completed';
+      const isBusy = isLoadingContracts || isSwapping || isSwapPending;
+      const isOnboardingInProgress = onboardingStatus !== 'completed' && onboardingStatus !== 'not_started';
 
       if (isBusy || isOnboardingInProgress) {
         setIsLoadingRate(false);
-        isFetchingRateRef.current = false;
         return;
       }
 
@@ -93,6 +92,8 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
         isFetchingRateRef.current = false;
       }
     }
+
+    fetchExchangeRate();
 
     // Set up interval for subsequent fetches
     const intervalId = setInterval(() => {

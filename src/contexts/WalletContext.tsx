@@ -36,18 +36,18 @@ interface WalletProviderProps {
 
 export function WalletProvider({ children }: WalletProviderProps) {
   const { activeNetwork } = useNetwork();
+
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [currentAddress, setCurrentAddress] = useState<AztecAddress | null>(null);
   const [node, setNode] = useState<AztecNode | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isUsingEmbeddedWallet, setIsUsingEmbeddedWallet] = useState(true);
+
   const embeddedWalletRef = useRef<Wallet | null>(null);
   const embeddedAddressRef = useRef<AztecAddress | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-
     async function initializeWallet() {
       try {
         setIsLoading(true);
@@ -58,33 +58,19 @@ export function WalletProvider({ children }: WalletProviderProps) {
 
         const aztecNode = createAztecNodeClient(nodeUrl);
 
-        if (cancelled) return;
         setNode(aztecNode);
 
-        // Add timeout to wallet creation (15 seconds)
-        const walletPromise = EmbeddedWallet.create(aztecNode);
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Wallet creation timeout - node may be unreachable')), 15000),
-        );
-
-        const embeddedWallet = await Promise.race([walletPromise, timeoutPromise]);
-
-        if (cancelled) return;
-
+        const embeddedWallet = await EmbeddedWallet.create(node);
         const defaultAccountAddress = (await embeddedWallet.getAccounts())[0]?.item;
 
         // Store embedded wallet and address for later restoration
         embeddedWalletRef.current = embeddedWallet;
         embeddedAddressRef.current = defaultAccountAddress;
 
-        if (cancelled) return;
-
         setCurrentAddress(defaultAccountAddress);
         setWallet(embeddedWallet);
         setIsLoading(false);
       } catch (err) {
-        if (cancelled) return;
-
         const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
 
         // Add helpful message for connection issues
@@ -98,13 +84,10 @@ export function WalletProvider({ children }: WalletProviderProps) {
       }
     }
 
-    initializeWallet();
-
-    // Cleanup function
-    return () => {
-      cancelled = true;
-    };
-  }, [activeNetwork]); // Reinitialize when network changes
+    if (activeNetwork?.nodeUrl) {
+      initializeWallet();
+    }
+  }, [activeNetwork.nodeUrl]); // Reinitialize only when node URL changes
 
   const connectWallet = useCallback(async (): Promise<Wallet> => {
     const chainInfo: ChainInfo = {

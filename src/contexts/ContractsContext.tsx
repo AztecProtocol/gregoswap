@@ -106,8 +106,6 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
   const [isLoadingContracts, setIsLoadingContracts] = useState(true);
 
   useEffect(() => {
-    let cancelled = false;
-
     async function initializeContracts() {
       if (walletLoading || !wallet) {
         setIsLoadingContracts(walletLoading);
@@ -135,10 +133,8 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
           contractSalt,
         );
 
-        if (cancelled) return;
         await wallet.batch(registrationBatch as unknown as any);
 
-        if (cancelled) return;
         // Instantiate contracts
         const { TokenContract } = await import('@aztec/noir-contracts.js/Token');
         const { AMMContract } = await import('@aztec/noir-contracts.js/AMM');
@@ -147,25 +143,18 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         const gregoCoinPremiumContract = await TokenContract.at(gregoCoinPremiumAddress, wallet);
         const ammContract = await AMMContract.at(ammAddress, wallet);
 
-        if (cancelled) return;
-
         setGregoCoin(gregoCoinContract);
         setGregoCoinPremium(gregoCoinPremiumContract);
         setAmm(ammContract);
 
         setIsLoadingContracts(false);
       } catch (err) {
-        if (cancelled) return;
         setIsLoadingContracts(false);
       }
     }
 
     initializeContracts();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [wallet, walletLoading, activeNetwork]);
+  }, [wallet, walletLoading]);
 
   // Utility methods
 

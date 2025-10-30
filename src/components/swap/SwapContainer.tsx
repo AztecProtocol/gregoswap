@@ -69,17 +69,14 @@ export function SwapContainer() {
     prevExchangeRateRef.current = exchangeRate;
   }, [exchangeRate, fromAmount, toAmount]);
 
-  // Track previous isSwapping state to detect completion and refresh balances
-  const prevIsSwappingRef = useRef(isSwapping);
   useEffect(() => {
     // If swap just completed successfully (was swapping, now not swapping, no error)
-    if (prevIsSwappingRef.current && !isSwapping && !swapError) {
+    if (!isSwapping && !swapError) {
       setFromAmount('');
       setToAmount('');
       // Refresh balances after successful swap
       refetchBalances();
     }
-    prevIsSwappingRef.current = isSwapping;
   }, [isSwapping, swapError, refetchBalances]);
 
   // Handle amount changes with recalculation
@@ -124,25 +121,16 @@ export function SwapContainer() {
     }
   };
 
-  // Execute swap after onboarding completes with pending swap
-  const hasExecutedOnboardingSwapRef = useRef(false);
-
   useEffect(() => {
-    if (onboardingStatus === 'completed' && isSwapPending && !hasExecutedOnboardingSwapRef.current) {
-      hasExecutedOnboardingSwapRef.current = true;
+    if (onboardingStatus === 'completed' && isSwapPending) {
       executeSwap();
-    }
-
-    // Reset when swap completes
-    if (!isSwapPending) {
-      hasExecutedOnboardingSwapRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onboardingStatus, isSwapPending]);
 
   // Clear swap pending flag when swap completes
   useEffect(() => {
-    if (isSwapPending && !isSwapping && hasExecutedOnboardingSwapRef.current) {
+    if (isSwapPending && !isSwapping) {
       clearSwapPending();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
