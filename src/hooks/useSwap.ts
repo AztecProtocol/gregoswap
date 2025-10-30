@@ -47,12 +47,14 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
   const [isLoadingRate, setIsLoadingRate] = useState(false);
   const isFetchingRateRef = useRef(false);
 
-  // Pre-populate exchange rate from onboarding result when available
+  // Pre-populate exchange rate from onboarding result when available (only once)
+  const hasUsedOnboardingResultRef = useRef(false);
   useEffect(() => {
-    if (onboardingResult) {
+    if (onboardingResult && !hasUsedOnboardingResultRef.current) {
       setExchangeRate(onboardingResult.exchangeRate);
+      hasUsedOnboardingResultRef.current = true;
     }
-  }, [onboardingResult, exchangeRate]);
+  }, [onboardingResult]);
 
   // Reset exchange rate when contracts are loading (e.g., network switch)
   useEffect(() => {
@@ -62,6 +64,21 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
       isFetchingRateRef.current = false;
     }
   }, [isLoadingContracts]);
+
+  // Track previous isSwapping state to detect swap completion
+  const prevIsSwappingRef = useRef(isSwapping);
+  useEffect(() => {
+    const wasSwapping = prevIsSwappingRef.current;
+    const justFinishedSwapping = wasSwapping && !isSwapping;
+
+    if (justFinishedSwapping && !swapError) {
+      // Swap just completed successfully - force immediate exchange rate refresh
+      isFetchingRateRef.current = false; // Allow new fetch
+      // The main fetch effect will pick this up on next render
+    }
+
+    prevIsSwappingRef.current = isSwapping;
+  }, [isSwapping, swapError]);
 
   // Fetch exchange rate with auto-refresh every 10 seconds
   useEffect(() => {
@@ -109,6 +126,7 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
     getExchangeRate,
     onboardingStatus,
     isSwapPending,
+    swapError, // Include to trigger refresh after swap completes
   ]);
 
   // Calculate USD values (simplified - just based on amount)
