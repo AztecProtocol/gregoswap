@@ -69,9 +69,18 @@ export function SwapContainer() {
     prevExchangeRateRef.current = exchangeRate;
   }, [exchangeRate, fromAmount, toAmount]);
 
+  // Track if a swap was actually in progress (to distinguish from initial mount)
+  const wasSwappingRef = useRef(false);
+  useEffect(() => {
+    if (isSwapping) {
+      wasSwappingRef.current = true;
+    }
+  }, [isSwapping]);
+
   useEffect(() => {
     // If swap just completed successfully (was swapping, now not swapping, no error)
-    if (!isSwapping && !swapError) {
+    if (wasSwappingRef.current && !isSwapping && !swapError) {
+      wasSwappingRef.current = false;
       setFromAmount('');
       setToAmount('');
       // Refresh balances after successful swap
