@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useContracts } from '../contexts/ContractsContext';
 import { useOnboarding } from '../contexts/OnboardingContext';
-import { useWallet } from '../contexts/WalletContext';
 import { waitForTxWithPhases } from '../utils/txUtils';
 
 interface UseSwapProps {
@@ -37,7 +36,6 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
   // Pull from contexts
   const { swap, isLoadingContracts, getExchangeRate } = useContracts();
   const { status: onboardingStatus, onboardingResult, isSwapPending } = useOnboarding();
-  const { isUsingEmbeddedWallet, currentAddress } = useWallet();
 
   // State for swap
   const [isSwapping, setIsSwapping] = useState(false);
@@ -110,11 +108,7 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
     isSwapping,
     getExchangeRate,
     onboardingStatus,
-    isUsingEmbeddedWallet,
-    currentAddress,
-    onboardingResult,
     isSwapPending,
-    exchangeRate,
   ]);
 
   // Calculate USD values (simplified - just based on amount)
