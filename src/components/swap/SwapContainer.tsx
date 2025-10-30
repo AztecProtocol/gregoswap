@@ -15,12 +15,9 @@ import { useBalances } from '../../hooks/useBalances';
 export function SwapContainer() {
   const { isLoadingContracts } = useContracts();
   const { isUsingEmbeddedWallet, currentAddress } = useWallet();
-  const { status: onboardingStatus, isSwapPending, closeModal, clearSwapPending, startOnboardingFlow } = useOnboarding();
+  const { status: onboardingStatus, isSwapPending, clearSwapPending, startOnboardingFlow } = useOnboarding();
 
   const swapErrorRef = useRef<HTMLDivElement | null>(null);
-
-  // Track if we're executing a swap that was triggered from onboarding
-  const [isExecutingOnboardingSwap, setIsExecutingOnboardingSwap] = useState(false);
 
   // Get balances using the hook
   const { balances, isLoading: isLoadingBalances, refetch: refetchBalances } = useBalances();
@@ -128,36 +125,28 @@ export function SwapContainer() {
   };
 
   // Execute swap after onboarding completes with pending swap
+  const hasExecutedOnboardingSwapRef = useRef(false);
+
   useEffect(() => {
-    if (onboardingStatus === 'completed' && isSwapPending && !isExecutingOnboardingSwap) {
-      setIsExecutingOnboardingSwap(true);
+    if (onboardingStatus === 'completed' && isSwapPending && !hasExecutedOnboardingSwapRef.current) {
+      hasExecutedOnboardingSwapRef.current = true;
       executeSwap();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onboardingStatus, isSwapPending, isExecutingOnboardingSwap]);
 
-  // Close modal 2 seconds after swap starts (swap continues, isSwapPending stays true)
-  useEffect(() => {
-    if (isSwapPending && isExecutingOnboardingSwap) {
-      const timer = setTimeout(() => {
-        closeModal();
-      }, 2000);
-
-      return () => {
-        clearTimeout(timer);
-      };
+    // Reset when swap completes
+    if (!isSwapPending) {
+      hasExecutedOnboardingSwapRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSwapPending, isExecutingOnboardingSwap]);
+  }, [onboardingStatus, isSwapPending]);
 
-  // Clear swap pending flag when swap actually completes
+  // Clear swap pending flag when swap completes
   useEffect(() => {
-    if (isSwapPending && isExecutingOnboardingSwap && !isSwapping) {
+    if (isSwapPending && !isSwapping && hasExecutedOnboardingSwapRef.current) {
       clearSwapPending();
-      setIsExecutingOnboardingSwap(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSwapPending, isExecutingOnboardingSwap, isSwapping]);
+  }, [isSwapPending, isSwapping]);
 
   // Scroll to error when it appears
   useEffect(() => {

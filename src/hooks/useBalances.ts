@@ -17,7 +17,7 @@ interface UseBalancesReturn {
 export function useBalances(): UseBalancesReturn {
   const { fetchBalances } = useContracts();
   const { currentAddress, isUsingEmbeddedWallet } = useWallet();
-  const { status: onboardingStatus, isSwapPending, onboardingResult } = useOnboarding();
+  const { onboardingResult } = useOnboarding();
 
   const [balances, setBalances] = useState<Balances>({
     gregoCoin: null,
@@ -56,15 +56,6 @@ export function useBalances(): UseBalancesReturn {
       setIsLoading(false);
     }
   }, [fetchBalances, currentAddress, isUsingEmbeddedWallet]);
-
-  // Auto-fetch when needed, but skip immediate fetch after onboarding without swap
-  useEffect(() => {
-    // Only fetch when: not using embedded wallet, has address, not onboarding
-    if (!isUsingEmbeddedWallet && currentAddress && onboardingStatus !== 'completed' && isSwapPending) {
-      refetch();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isUsingEmbeddedWallet, currentAddress, onboardingStatus, isSwapPending]);
 
   return {
     balances,

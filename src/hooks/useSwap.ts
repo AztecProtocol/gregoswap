@@ -67,23 +67,13 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
 
   // Fetch exchange rate with auto-refresh every 10 seconds
   useEffect(() => {
-    let cancelled = false;
-
     async function fetchExchangeRate() {
-      if (cancelled) return;
-
       const isBusy = isLoadingContracts || isSwapping;
       const isOnboardingInProgress = onboardingStatus !== 'completed';
 
       if (isBusy || isOnboardingInProgress) {
         setIsLoadingRate(false);
         isFetchingRateRef.current = false;
-        return;
-      }
-
-      // Skip if we just completed onboarding without a swap and still have the result
-      // This waits for the next cycle instead of fetching immediately
-      if (onboardingResult && !isSwapPending && exchangeRate === onboardingResult.exchangeRate) {
         return;
       }
 
@@ -95,41 +85,21 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
         isFetchingRateRef.current = true;
         setIsLoadingRate(true);
 
-        // Check cancelled flag right before the async call
-        if (cancelled) {
-          isFetchingRateRef.current = false;
-          return;
-        }
-
         const rate = await getExchangeRate();
-        if (cancelled) return;
         setExchangeRate(rate);
       } finally {
-        if (!cancelled) {
-          setIsLoadingRate(false);
-        }
+        setIsLoadingRate(false);
+
         isFetchingRateRef.current = false;
       }
     }
 
-    // Delay initial fetch by 100ms to let swap start if needed
-    // This prevents race condition when onboarding completes with pending swap
-    const initialTimeout = setTimeout(() => {
-      if (!cancelled) {
-        fetchExchangeRate();
-      }
-    }, 100);
-
     // Set up interval for subsequent fetches
     const intervalId = setInterval(() => {
-      if (!cancelled) {
-        fetchExchangeRate();
-      }
+      fetchExchangeRate();
     }, 10000);
 
     return () => {
-      cancelled = true;
-      clearTimeout(initialTimeout);
       clearInterval(intervalId);
       setIsLoadingRate(false);
       isFetchingRateRef.current = false;

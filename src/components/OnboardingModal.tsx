@@ -50,7 +50,7 @@ interface OnboardingModalProps {
 }
 
 export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps) {
-  const { status, error, currentStep, totalSteps, resetOnboarding, isSwapPending } = useOnboarding();
+  const { status, error, currentStep, totalSteps, resetOnboarding, isSwapPending, closeModal } = useOnboarding();
   const { connectWallet } = useWallet();
   const [accounts, setAccounts] = useState<Aliased<AztecAddress>[]>([]);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
@@ -91,7 +91,7 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
     fetchAccounts();
   }, [open, status, connectWallet]);
 
-  // Handle completion animation
+  // Handle completion animation and auto-close
   useEffect(() => {
     if (status === 'completed' && isSwapPending) {
       // Show completion check immediately
@@ -102,15 +102,21 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
         setShowSwapIcon(true);
       }, 800);
 
+      // Close modal 2 seconds after completion (swap continues in background)
+      const closeTimer = setTimeout(() => {
+        closeModal();
+      }, 2000);
+
       return () => {
         clearTimeout(swapTimer);
+        clearTimeout(closeTimer);
       };
     } else {
       // Reset animation state when not showing completion
       setShowCompletionCheck(false);
       setShowSwapIcon(false);
     }
-  }, [status, isSwapPending]);
+  }, [status, isSwapPending, closeModal]);
 
   const getStepStatus = (stepIndex: number): 'completed' | 'active' | 'pending' => {
     if (stepIndex < currentStep) return 'completed';
