@@ -46,27 +46,39 @@ export function WalletProvider({ children }: WalletProviderProps) {
 
   const embeddedWalletRef = useRef<Wallet | null>(null);
   const embeddedAddressRef = useRef<AztecAddress | null>(null);
+  const previousNodeUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
+    const nodeUrl = activeNetwork?.nodeUrl;
+
+    if (!nodeUrl) {
+      return;
+    }
+
+    // Only initialize if nodeUrl has actually changed
+    if (previousNodeUrlRef.current === nodeUrl) {
+      return;
+    }
+
+    previousNodeUrlRef.current = nodeUrl;
+
     async function initializeWallet() {
       try {
         setIsLoading(true);
         setError(null);
 
-        // Get the node URL from active network
-        const nodeUrl = activeNetwork.nodeUrl;
-
         const aztecNode = createAztecNodeClient(nodeUrl);
 
         setNode(aztecNode);
 
-        const embeddedWallet = await EmbeddedWallet.create(node);
+        const embeddedWallet = await EmbeddedWallet.create(aztecNode);
         const defaultAccountAddress = (await embeddedWallet.getAccounts())[0]?.item;
 
         // Store embedded wallet and address for later restoration
         embeddedWalletRef.current = embeddedWallet;
         embeddedAddressRef.current = defaultAccountAddress;
 
+        setIsUsingEmbeddedWallet(true);
         setCurrentAddress(defaultAccountAddress);
         setWallet(embeddedWallet);
         setIsLoading(false);
@@ -84,10 +96,8 @@ export function WalletProvider({ children }: WalletProviderProps) {
       }
     }
 
-    if (activeNetwork?.nodeUrl) {
-      initializeWallet();
-    }
-  }, [activeNetwork.nodeUrl]); // Reinitialize only when node URL changes
+    initializeWallet();
+  }, [activeNetwork]); // Depend on activeNetwork but check nodeUrl manually
 
   const connectWallet = useCallback(async (): Promise<Wallet> => {
     const chainInfo: ChainInfo = {

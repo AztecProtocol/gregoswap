@@ -129,12 +129,13 @@ export function SwapContainer() {
   }, [onboardingStatus, isSwapPending]);
 
   // Clear swap pending flag when swap completes
+  // Only clear if onboarding is completed (otherwise it's still in progress)
   useEffect(() => {
-    if (isSwapPending && !isSwapping) {
+    if (isSwapPending && !isSwapping && onboardingStatus === 'completed') {
       clearSwapPending();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSwapPending, isSwapping]);
+  }, [isSwapPending, isSwapping, onboardingStatus]);
 
   // Scroll to error when it appears
   useEffect(() => {
