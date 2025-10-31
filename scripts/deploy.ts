@@ -15,7 +15,7 @@ import { Fr } from '@aztec/foundation/fields';
 import type { DeployAccountOptions } from '@aztec/aztec.js/wallet';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 
-import { ProofOfPasswordContract } from '../contracts/target/ProofOfPassword';
+import { ProofOfPasswordContract } from '../contracts/target/ProofOfPassword.ts';
 
 // Parse network from CLI args (--network <name>)
 function getNetworkFromArgs(): string {
@@ -45,6 +45,10 @@ const AZTEC_NODE_URL = NETWORK_URLS[NETWORK];
 const PROVER_ENABLED = process.env.PROVER_ENABLED === 'false' ? false : true;
 
 const PASSWORD = process.env.PASSWORD ? process.env.PASSWORD : undefined;
+
+if (!PASSWORD) {
+  throw new Error('Please specify a PASSWORD');
+}
 
 const PXE_STORE_DIR = path.join(import.meta.dirname, '.pxe-store');
 
@@ -216,6 +220,7 @@ async function writeNetworkConfig(network: string, deploymentInfo: any) {
       - GregoCoinPremium: ${deploymentInfo.gregoCoinPremiumAddress}
       - AMM: ${deploymentInfo.ammAddress}
       - Liquidity Token: ${deploymentInfo.liquidityTokenAddress}
+      - Proof of password: ${deploymentInfo.popAddress}
 
       Deployer: ${deploymentInfo.deployerAddress}
       \n\n\n

@@ -763,7 +763,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@aztec/constants@npm:3.0.0-devnet.2":
+"@aztec/constants@npm:3.0.0-devnet.2, @aztec/constants@npm:v3.0.0-devnet.2":
   version: 3.0.0-devnet.2
   resolution: "@aztec/constants@npm:3.0.0-devnet.2"
   dependencies:
@@ -964,6 +964,7 @@ __metadata:
   dependencies:
     "@aztec/accounts": "npm:v3.0.0-devnet.2"
     "@aztec/aztec.js": "npm:v3.0.0-devnet.2"
+    "@aztec/constants": "npm:v3.0.0-devnet.2"
     "@aztec/entrypoints": "npm:v3.0.0-devnet.2"
     "@aztec/foundation": "npm:v3.0.0-devnet.2"
     "@aztec/noir-contracts.js": "npm:v3.0.0-devnet.2"
