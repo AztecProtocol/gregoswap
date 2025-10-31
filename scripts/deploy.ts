@@ -15,6 +15,8 @@ import { Fr } from '@aztec/foundation/fields';
 import type { DeployAccountOptions } from '@aztec/aztec.js/wallet';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 
+import { ProofOfPasswordContract } from '../contracts/target/ProofOfPassword';
+
 // Parse network from CLI args (--network <name>)
 function getNetworkFromArgs(): string {
   const args = process.argv.slice(2);
@@ -42,7 +44,7 @@ const NETWORK_URLS: Record<string, string> = {
 const AZTEC_NODE_URL = NETWORK_URLS[NETWORK];
 const PROVER_ENABLED = process.env.PROVER_ENABLED === 'false' ? false : true;
 
-const MINT_TO = process.env.MINT_TO ? AztecAddress.fromString(process.env.MINT_TO) : undefined;
+const PASSWORD = process.env.PASSWORD ? process.env.PASSWORD : undefined;
 
 const PXE_STORE_DIR = path.join(import.meta.dirname, '.pxe-store');
 
@@ -156,23 +158,18 @@ async function deployContracts(wallet: TestWallet, deployer: AztecAddress) {
     .with({ authWitnesses: [token0Authwit, token1Authwit] });
   await addLiquidityInteraction.send({ from: deployer, fee: { paymentMethod } }).wait({ timeout: 120 });
 
-  if (MINT_TO) {
-    await gregoCoin.methods
-      .mint_to_private(MINT_TO, INITIAL_TOKEN_BALANCE)
-      .send({ from: deployer, fee: { paymentMethod } })
-      .wait({ timeout: 120 });
-    await gregoCoinPremium.methods
-      .mint_to_private(MINT_TO, INITIAL_TOKEN_BALANCE)
-      .send({ from: deployer, fee: { paymentMethod } })
-      .wait({ timeout: 120 });
-    console.log(`Minted ${INITIAL_TOKEN_BALANCE} GRG and GRGP to ${MINT_TO.toString()}`);
-  }
+  const pop = await ProofOfPasswordContract.deploy(wallet, gregoCoin.address, PASSWORD)
+    .send({ from: deployer, contractAddressSalt })
+    .deployed({ timeout: 120 });
+
+  await gregoCoin.methods.set_minter(pop.address, true).send({ from: deployer }).wait({ timeout: 120 });
 
   return {
     gregoCoinAddress: gregoCoin.address.toString(),
     gregoCoinPremiumAddress: gregoCoinPremium.address.toString(),
     liquidityTokenAddress: liquidityToken.address.toString(),
     ammAddress: amm.address.toString(),
+    popAddress: pop.address.toString(),
     contractAddressSalt: contractAddressSalt.toString(),
   };
 }
@@ -193,6 +190,7 @@ async function writeNetworkConfig(network: string, deploymentInfo: any) {
       gregoCoinPremium: deploymentInfo.gregoCoinPremiumAddress,
       amm: deploymentInfo.ammAddress,
       liquidityToken: deploymentInfo.liquidityTokenAddress,
+      pop: deploymentInfo.popAddress,
       salt: deploymentInfo.contractAddressSalt,
     },
     deployer: {

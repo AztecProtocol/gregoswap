@@ -7,7 +7,7 @@ pub contract ProofOfPassword {
 
     use aztec::{
         keys::getters::get_public_keys,
-        macros::{functions::{external, initializer}, storage::storage},
+        macros::{functions::{external, initializer, internal}, storage::storage},
         protocol_types::{
             address::AztecAddress,
             hash::poseidon2_hash,
@@ -25,11 +25,20 @@ pub contract ProofOfPassword {
     }
 
     #[initializer]
-    #[external("public")]
+    #[external("private")]
     fn constructor(grego_coin_address: AztecAddress, password: str<31>) {
-        storage.grego_coin_address.initialize(grego_coin_address);
         let field_compressed_str = FieldCompressedString::from_string(password);
-        storage.password_hash.initialize(poseidon2_hash(field_compressed_str.serialize()));
+        let password_hash = poseidon2_hash(field_compressed_str.serialize());
+        ProofOfPassword::at(context.this_address())
+            ._init_storage(grego_coin_address, password_hash)
+            .enqueue(&mut context);
+    }
+
+    #[external("public")]
+    #[internal]
+    fn _init_storage(grego_coin_address: AztecAddress, password_hash: Field) {
+        storage.grego_coin_address.initialize(grego_coin_address);
+        storage.password_hash.initialize(password_hash);
     }
 
     #[external("private")]

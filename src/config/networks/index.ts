@@ -9,6 +9,7 @@ export interface NetworkConfig {
     gregoCoinPremium: string;
     amm: string;
     liquidityToken: string;
+    pop: string;
     salt: string;
   };
   deployer: {

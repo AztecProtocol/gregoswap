@@ -20,5 +20,5 @@
     "allowArbitraryExtensions": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*.ts*", "tests/**/*.ts", "src/contracts/target/*.json", "artifacts/**/*.ts", "scripts/deploy.ts"]
+  "include": ["src/**/*.ts*", "contracts/target/*", "scripts/deploy.ts"]
 }

@@ -29,7 +29,7 @@ pub unconstrained fn setup() -> (TestEnvironment, AztecAddress, AztecAddress, Az
     let initializer_call_interface =
         ProofOfPassword::interface().constructor(token_contract_address, PASSWORD);
     let pop_contract_address =
-        env.deploy("ProofOfPassword").with_public_initializer(owner, initializer_call_interface);
+        env.deploy("ProofOfPassword").with_private_initializer(owner, initializer_call_interface);
 
     let _ = env.call_public(
         owner,

@@ -91,14 +91,14 @@ async function getContractRegistrationBatch(
   ]);
 
   return [
-    { name: 'registerContract' as const, args: [ammInstance, AMMContractArtifact, undefined] },
+    { name: 'registerContract', args: [ammInstance, AMMContractArtifact, undefined] },
     { name: 'registerContract', args: [gregoCoinInstance, TokenContractArtifact, undefined] },
     { name: 'registerContract', args: [gregoCoinPremiumInstance, TokenContractArtifact, undefined] },
   ];
 }
 
 export function ContractsProvider({ children }: ContractsProviderProps) {
-  const { wallet, currentAddress, isLoading: walletLoading } = useWallet();
+  const { wallet, currentAddress, isLoading: walletLoading, node } = useWallet();
   const { activeNetwork } = useNetwork();
   const [gregoCoin, setGregoCoin] = useState<TokenContract | null>(null);
   const [gregoCoinPremium, setGregoCoinPremium] = useState<TokenContract | null>(null);
@@ -156,7 +156,20 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     initializeContracts();
   }, [wallet, walletLoading]);
 
-  // Utility methods
+  const drip = useCallback(
+    async (password: string, recipient: AztecAddress) => {
+      const popAddress = AztecAddress.fromString(activeNetwork.contracts.pop);
+      const { ProofOfPasswordContract, ProofOfPasswordContractArtifact } = await import(
+        '../../contracts/target/ProofOfPassword'
+      );
+      const instance = await node.getContract(popAddress);
+      await wallet.registerContract(instance, ProofOfPasswordContractArtifact);
+      const pop = await ProofOfPasswordContract.at(popAddress, wallet);
+      const sentTx = await pop.methods.check_password_and_mint(password, recipient).send({ from: currentAddress });
+      return sentTx;
+    },
+    [wallet, currentAddress],
+  );
 
   const getExchangeRate = useCallback(async () => {
     if (!amm) throw new Error('AMM contract not initialized');
