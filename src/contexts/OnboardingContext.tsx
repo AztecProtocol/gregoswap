@@ -91,7 +91,6 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
       case 'registering_contracts':
         return 2;
       case 'simulating_queries':
-        return 3;
       case 'completed':
         return 3;
       default:

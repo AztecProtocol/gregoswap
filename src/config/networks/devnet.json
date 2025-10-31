@@ -1,18 +1,18 @@
 {
   "id": "devnet",
   "name": "Devnet",
-  "nodeUrl": "https://devnet.aztec-labs.com",
+  "nodeUrl": "http://localhost:8280",
   "chainId": "11155111",
   "rollupVersion": "1667575857",
   "contracts": {
-    "gregoCoin": "0x1fe4169af18f9649c27696eee145272a5a48fcb447d221903b1d6c4d9cafb1cd",
-    "gregoCoinPremium": "0x100869c26ac0dc6397abeb742fe04ac578306aed245542899e87208ac8f3ea7c",
-    "amm": "0x121e1499bf09171a41c139687c74bad025c9ba7e6f337d616edde598e66f00bc",
-    "liquidityToken": "0x046945d95d9ded6d4135c4f0628120064e9ecac59cf237f2d6443aadb6fc40ff",
-    "salt": "0x156c6d6bc95c5d1c91bc6e0e0eb3ef9d1596bbe9c27d68943e427dbec08b74f9"
+    "gregoCoin": "0x0dec333fa6feef746eed38fb56e149b322bbd327c39fb14eeb23a91c3346d35b",
+    "gregoCoinPremium": "0x1351b198e962a9fcf18f57c84d84263ed8f1d410318831ee88cda081fe964797",
+    "amm": "0x0d3f332f0ad692e6f4c5c0e5e35ed46f57c7c7f6cf7fc2bd89ecf33e53d74ed6",
+    "liquidityToken": "0x1035c7327eca02cfc9127e2b39da0ab1309a903af3c6e9664d78e0b71f0d1310",
+    "salt": "0x16df85aa98268e1140259fc3e4622a21c9001d6fcd6ccaad6c66145d1e2e9ed8"
   },
   "deployer": {
-    "address": "0x2255d4da6058ae50f557517c08af26e49a46800a491b06ae368e6b136ee1ac35"
+    "address": "0x1ebd37e0d43d7e155ca0628dbf89603ca3b434828d8e5c1b5e9033e3b86bdead"
   },
-  "deployedAt": "2025-10-30T12:16:25.968Z"
+  "deployedAt": "2025-10-30T18:21:52.667Z"
 }

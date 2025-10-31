@@ -5,34 +5,50 @@ use aztec::macros::aztec;
 #[aztec]
 pub contract ProofOfPassword {
 
-    use aztec::{protocol_types:AztecAddress, macros::{storage, functions::{private, public, initializer}};
+    use aztec::{
+        keys::getters::get_public_keys,
+        macros::{functions::{external, initializer}, storage::storage},
+        protocol_types::{
+            address::AztecAddress,
+            hash::poseidon2_hash,
+            traits::{Hash, Serialize, ToField},
+        },
+        state_vars::PublicImmutable,
+    };
     use compressed_string::FieldCompressedString;
-    use poseidon::hash::poseidon2_hash;
+    use token::Token;
 
     #[storage]
     struct Storage<Context> {
-        admin: PublicMutable<AztecAddress, Context>,
-        minters: Map<AztecAddress, PublicMutable<bool, Context>, Context>,
-        balances: Map<AztecAddress, BalanceSet<Context>, Context>,
-        total_supply: PublicMutable<u128, Context>,
-        public_balances: Map<AztecAddress, PublicMutable<u128, Context>, Context>,
-        symbol: PublicImmutable<FieldCompressedString, Context>,
-        name: PublicImmutable<FieldCompressedString, Context>,
-        decimals: PublicImmutable<u8, Context>,
+        grego_coin_address: PublicImmutable<AztecAddress, Context>,
+        password_hash: PublicImmutable<Field, Context>,
     }
-    
 
     #[initializer]
-    fn constructor(grego_coin_address: AztecAddress) {
-
+    #[external("public")]
+    fn constructor(grego_coin_address: AztecAddress, password: str<31>) {
+        storage.grego_coin_address.initialize(grego_coin_address);
+        let field_compressed_str = FieldCompressedString::from_string(password);
+        storage.password_hash.initialize(poseidon2_hash(field_compressed_str.serialize()));
     }
 
-    #[private]
+    #[external("private")]
     fn check_password_and_mint(password: str<31>, to: AztecAddress) {
-        let field_compressed_str = FieldCompressedString::from_string(name);
-        if poseidon2_hash([field_compressed_str] === 1234) {
-            Token::at()
-        }
+        let field_compressed_str = FieldCompressedString::from_string(password);
+        let password_hash = storage.password_hash.read();
+        assert(
+            poseidon2_hash(field_compressed_str.serialize()) == password_hash,
+            f"Invalid password {password}",
+        );
 
+        let address = storage.grego_coin_address.read();
+        Token::at(address).mint_to_private(to, 1000).call(&mut context);
+
+        let msg_sender_nullifier_public_key_message_hash =
+            get_public_keys(context.msg_sender().unwrap()).npk_m.hash();
+
+        let secret = context.request_nsk_app(msg_sender_nullifier_public_key_message_hash); // get secret key of caller of function
+        let nullifier = poseidon2_hash([context.msg_sender().unwrap().to_field(), secret]); // derive nullifier from sender and secret
+        context.push_nullifier(nullifier);
     }
 }
