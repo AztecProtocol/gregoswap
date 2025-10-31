@@ -159,10 +159,13 @@ async function deployContracts(wallet: TestWallet, deployer: AztecAddress) {
   await addLiquidityInteraction.send({ from: deployer, fee: { paymentMethod } }).wait({ timeout: 120 });
 
   const pop = await ProofOfPasswordContract.deploy(wallet, gregoCoin.address, PASSWORD)
-    .send({ from: deployer, contractAddressSalt })
+    .send({ from: deployer, contractAddressSalt, fee: { paymentMethod } })
     .deployed({ timeout: 120 });
 
-  await gregoCoin.methods.set_minter(pop.address, true).send({ from: deployer }).wait({ timeout: 120 });
+  await gregoCoin.methods
+    .set_minter(pop.address, true)
+    .send({ from: deployer, fee: { paymentMethod } })
+    .wait({ timeout: 120 });
 
   return {
     gregoCoinAddress: gregoCoin.address.toString(),
@@ -170,6 +173,7 @@ async function deployContracts(wallet: TestWallet, deployer: AztecAddress) {
     liquidityTokenAddress: liquidityToken.address.toString(),
     ammAddress: amm.address.toString(),
     popAddress: pop.address.toString(),
+    sponsoredFPCAddress: sponsoredPFCContract.address,
     contractAddressSalt: contractAddressSalt.toString(),
   };
 }
@@ -191,6 +195,7 @@ async function writeNetworkConfig(network: string, deploymentInfo: any) {
       amm: deploymentInfo.ammAddress,
       liquidityToken: deploymentInfo.liquidityTokenAddress,
       pop: deploymentInfo.popAddress,
+      sponsoredFPC: deploymentInfo.sponsoredFPCAddress,
       salt: deploymentInfo.contractAddressSalt,
     },
     deployer: {

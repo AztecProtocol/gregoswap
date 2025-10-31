@@ -7,6 +7,8 @@ import type { Wallet } from '@aztec/aztec.js/wallet';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { Fr } from '@aztec/aztec.js/fields';
 import { BatchCall, getContractInstanceFromInstantiationParams, type SentTx } from '@aztec/aztec.js/contracts';
+import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
+import { SPONSORED_FPC_SALT } from '@aztec/constants';
 
 class BigDecimal {
   // Configuration: private constants
@@ -162,13 +164,26 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
       const { ProofOfPasswordContract, ProofOfPasswordContractArtifact } = await import(
         '../../contracts/target/ProofOfPassword'
       );
+      const { SponsoredFPCContractArtifact } = await import('@aztec/noir-contracts.js/SponsoredFPC');
+      const sponsoredFPCInstance = await getContractInstanceFromInstantiationParams(SponsoredFPCContractArtifact, {
+        salt: new Fr(SPONSORED_FPC_SALT),
+      });
+
       const instance = await node.getContract(popAddress);
-      await wallet.registerContract(instance, ProofOfPasswordContractArtifact);
+      await wallet.batch([
+        { name: 'registerContract', args: [instance, ProofOfPasswordContractArtifact, undefined] },
+        { name: 'registerContract', args: [sponsoredFPCInstance, SponsoredFPCContractArtifact, undefined] },
+      ]);
       const pop = await ProofOfPasswordContract.at(popAddress, wallet);
-      const sentTx = await pop.methods.check_password_and_mint(password, recipient).send({ from: currentAddress });
+      const sentTx = await pop.methods.check_password_and_mint(password, recipient).send({
+        from: AztecAddress.ZERO,
+        fee: {
+          paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPCInstance.address),
+        },
+      });
       return sentTx;
     },
-    [wallet, currentAddress],
+    [wallet],
   );
 
   const getExchangeRate = useCallback(async () => {
