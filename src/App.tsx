@@ -19,7 +19,7 @@ export function App() {
     if (!isUsingEmbeddedWallet && currentAddress) {
       resetOnboarding();
     }
-    startOnboardingFlow(false); // No pending swap when clicked from wallet chip
+    startOnboardingFlow('swap'); // Default to swap flow when clicked from wallet chip
   };
 
   const handleDisconnect = () => {

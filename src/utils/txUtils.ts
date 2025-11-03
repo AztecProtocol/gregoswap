@@ -39,7 +39,7 @@ export async function waitForTxWithPhases(
 
       return false;
     } catch (error) {
-      if (error.message.includes('failed')) {
+      if (error.message.includes('failed') || error.message.includes('Error')) {
         throw error;
       }
       // Receipt not available yet, keep polling

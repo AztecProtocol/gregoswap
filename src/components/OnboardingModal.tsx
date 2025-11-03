@@ -15,34 +15,20 @@ import {
   ListItemButton,
   Fade,
   Collapse,
+  TextField,
+  Button,
+  IconButton,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import WaterDropIcon from '@mui/icons-material/WaterDrop';
+import CloseIcon from '@mui/icons-material/Close';
+import ErrorIcon from '@mui/icons-material/Error';
 import { useOnboarding } from '../contexts/OnboardingContext';
 import { useWallet } from '../contexts/WalletContext';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { Aliased } from '@aztec/aztec.js/wallet';
-
-interface OnboardingStep {
-  label: string;
-  description: string;
-}
-
-const ONBOARDING_STEPS: OnboardingStep[] = [
-  {
-    label: 'Connect Wallet',
-    description: 'Select your account from the wallet extension',
-  },
-  {
-    label: 'Register Contracts',
-    description: 'Setting up token contracts in your wallet',
-  },
-  {
-    label: 'Approve Queries',
-    description: 'Review and approve batched queries in your wallet',
-  },
-];
 
 interface OnboardingModalProps {
   open: boolean;
@@ -50,15 +36,22 @@ interface OnboardingModalProps {
 }
 
 export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps) {
-  const { status, error, currentStep, totalSteps, resetOnboarding, isSwapPending, closeModal } = useOnboarding();
+  const { status, error, currentStep, totalSteps, resetOnboarding, flowType, currentFlow, closeModal, completeDripOnboarding } =
+    useOnboarding();
   const { connectWallet } = useWallet();
   const [accounts, setAccounts] = useState<Aliased<AztecAddress>[]>([]);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
   const [accountsError, setAccountsError] = useState<string | null>(null);
 
+  // Drip flow state
+  const [password, setPassword] = useState('');
+
   // Transition animation state
   const [showCompletionCheck, setShowCompletionCheck] = useState(false);
   const [showSwapIcon, setShowSwapIcon] = useState(false);
+
+  // Get steps from flow config
+  const steps = currentFlow?.steps || [];
 
   // Fetch accounts when modal opens and status is connecting_wallet
   useEffect(() => {
@@ -93,22 +86,22 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
 
   // Handle completion animation and auto-close
   useEffect(() => {
-    if (status === 'completed' && isSwapPending) {
+    if (status === 'completed') {
       // Show completion check immediately
       setShowCompletionCheck(true);
 
-      // Show swap icon after 800ms
-      const swapTimer = setTimeout(() => {
+      // Show action icon after 800ms (swap or drip icon based on flow)
+      const iconTimer = setTimeout(() => {
         setShowSwapIcon(true);
       }, 800);
 
-      // Close modal 2 seconds after completion (swap continues in background)
+      // Close modal 2 seconds after completion (transaction continues in background)
       const closeTimer = setTimeout(() => {
         closeModal();
       }, 2000);
 
       return () => {
-        clearTimeout(swapTimer);
+        clearTimeout(iconTimer);
         clearTimeout(closeTimer);
       };
     } else {
@@ -116,9 +109,11 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
       setShowCompletionCheck(false);
       setShowSwapIcon(false);
     }
-  }, [status, isSwapPending, closeModal]);
+  }, [status, closeModal]);
 
-  const getStepStatus = (stepIndex: number): 'completed' | 'active' | 'pending' => {
+  const getStepStatus = (stepIndex: number): 'completed' | 'active' | 'pending' | 'error' => {
+    // If there's an error, mark the current step as error
+    if (status === 'error' && stepIndex === currentStep) return 'error';
     if (stepIndex < currentStep) return 'completed';
     if (stepIndex === currentStep) return 'active';
     return 'pending';
@@ -128,14 +123,21 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
     onAccountSelect(address);
   };
 
+  const handlePasswordSubmit = () => {
+    if (!password) return;
+    // Complete onboarding with password, which will trigger drip execution in SwapContainer
+    completeDripOnboarding(password);
+    setPassword('');
+  };
+
   const isLoading = status !== 'not_started' && status !== 'completed' && status !== 'error';
   const progress = (currentStep / totalSteps) * 100;
 
   // Show account selection UI when in connecting_wallet status
   const showAccountSelection = status === 'connecting_wallet' && !isLoadingAccounts && accounts.length > 0;
 
-  // Show completion transition instead of steps when completed with pending swap
-  const showCompletionTransition = status === 'completed' && isSwapPending;
+  // Show completion transition instead of steps when completed
+  const showCompletionTransition = status === 'completed';
 
   return (
     <Dialog
@@ -148,7 +150,22 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
         backgroundImage: 'none',
       }}
     >
-      <DialogTitle sx={{ fontWeight: 600, pb: 1 }}>Setting Up Your Wallet</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 600, pb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        Setting Up Your Wallet
+        <IconButton
+          onClick={closeModal}
+          size="small"
+          sx={{
+            color: 'text.secondary',
+            '&:hover': {
+              backgroundColor: 'rgba(255, 255, 255, 0.08)',
+            },
+          }}
+          aria-label="close"
+        >
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
 
       <DialogContent>
         {/* Show completion transition or normal progress */}
@@ -179,28 +196,48 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
               </Box>
             </Fade>
 
-            {/* Swap Arrow and Message */}
+            {/* Action Icon and Message */}
             <Fade in={showSwapIcon} timeout={500}>
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                <SwapHorizIcon
-                  sx={{
-                    color: 'secondary.main',
-                    fontSize: 40,
-                    animation: 'pulse 1s ease-in-out infinite',
-                    '@keyframes pulse': {
-                      '0%, 100%': {
-                        opacity: 1,
-                        transform: 'scale(1)',
+                {flowType === 'drip' ? (
+                  <WaterDropIcon
+                    sx={{
+                      color: 'secondary.main',
+                      fontSize: 40,
+                      animation: 'pulse 1s ease-in-out infinite',
+                      '@keyframes pulse': {
+                        '0%, 100%': {
+                          opacity: 1,
+                          transform: 'scale(1)',
+                        },
+                        '50%': {
+                          opacity: 0.7,
+                          transform: 'scale(1.1)',
+                        },
                       },
-                      '50%': {
-                        opacity: 0.7,
-                        transform: 'scale(1.1)',
+                    }}
+                  />
+                ) : (
+                  <SwapHorizIcon
+                    sx={{
+                      color: 'secondary.main',
+                      fontSize: 40,
+                      animation: 'pulse 1s ease-in-out infinite',
+                      '@keyframes pulse': {
+                        '0%, 100%': {
+                          opacity: 1,
+                          transform: 'scale(1)',
+                        },
+                        '50%': {
+                          opacity: 0.7,
+                          transform: 'scale(1.1)',
+                        },
                       },
-                    },
-                  }}
-                />
+                    }}
+                  />
+                )}
                 <Typography variant="body1" color="text.secondary" textAlign="center">
-                  Executing swap...
+                  {flowType === 'drip' ? 'Claiming GregoCoin...' : 'Executing swap...'}
                 </Typography>
               </Box>
             </Fade>
@@ -253,11 +290,12 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
 
             {/* Steps List - Show only first step during connecting_wallet phase */}
             <List sx={{ py: 0 }}>
-              {ONBOARDING_STEPS.map((step, index) => {
+              {steps.map((step, index) => {
                 const stepNum = index + 1;
                 const stepStatus = getStepStatus(stepNum);
                 const isActive = stepStatus === 'active';
                 const isCompleted = stepStatus === 'completed';
+                const isError = stepStatus === 'error';
 
                 // First step always visible
                 if (index === 0) {
@@ -272,7 +310,9 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
                       }}
                     >
                       <ListItemIcon sx={{ minWidth: 40 }}>
-                        {isCompleted ? (
+                        {isError ? (
+                          <ErrorIcon sx={{ color: 'error.main', fontSize: 28 }} />
+                        ) : isCompleted ? (
                           <CheckCircleIcon sx={{ color: 'primary.main', fontSize: 28 }} />
                         ) : isActive && isLoading ? (
                           <CircularProgress size={24} sx={{ color: 'primary.main' }} />
@@ -285,15 +325,15 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
                           <Typography
                             variant="body1"
                             sx={{
-                              fontWeight: isActive ? 600 : 400,
-                              color: isActive ? 'text.primary' : 'text.secondary',
+                              fontWeight: isActive || isError ? 600 : 400,
+                              color: isError ? 'error.main' : isActive ? 'text.primary' : 'text.secondary',
                             }}
                           >
                             {step.label}
                           </Typography>
                         }
                         secondary={
-                          <Typography variant="caption" color="text.secondary">
+                          <Typography variant="caption" color={isError ? 'error.main' : 'text.secondary'}>
                             {step.description}
                           </Typography>
                         }
@@ -314,7 +354,9 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
                       }}
                     >
                       <ListItemIcon sx={{ minWidth: 40 }}>
-                        {isCompleted ? (
+                        {isError ? (
+                          <ErrorIcon sx={{ color: 'error.main', fontSize: 28 }} />
+                        ) : isCompleted ? (
                           <CheckCircleIcon sx={{ color: 'primary.main', fontSize: 28 }} />
                         ) : isActive && isLoading ? (
                           <CircularProgress size={24} sx={{ color: 'primary.main' }} />
@@ -327,15 +369,15 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
                           <Typography
                             variant="body1"
                             sx={{
-                              fontWeight: isActive ? 600 : 400,
-                              color: isActive ? 'text.primary' : 'text.secondary',
+                              fontWeight: isActive || isError ? 600 : 400,
+                              color: isError ? 'error.main' : isActive ? 'text.primary' : 'text.secondary',
                             }}
                           >
                             {step.label}
                           </Typography>
                         }
                         secondary={
-                          <Typography variant="caption" color="text.secondary">
+                          <Typography variant="caption" color={isError ? 'error.main' : 'text.secondary'}>
                             {step.description}
                           </Typography>
                         }
@@ -423,7 +465,8 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
               </Box>
             </Collapse>
 
-            {status === 'simulating_queries' && (
+            {/* Swap flow: show approval message */}
+            {status === 'simulating_queries' && flowType === 'swap' && (
               <Box
                 sx={{
                   mt: 3,
@@ -438,6 +481,40 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
                   Please approve the batched queries in your wallet. This is a one-time setup that enables seamless
                   interactions going forward.
                 </Typography>
+              </Box>
+            )}
+
+            {/* Drip flow: show password input */}
+            {status === 'awaiting_drip' && flowType === 'drip' && (
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Enter the password to claim your free GregoCoin tokens:
+                </Typography>
+
+                <TextField
+                  fullWidth
+                  type="password"
+                  label="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoFocus
+                  sx={{ mb: 2 }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && password) {
+                      handlePasswordSubmit();
+                    }
+                  }}
+                />
+
+                <Button
+                  fullWidth
+                  variant="contained"
+                  onClick={handlePasswordSubmit}
+                  disabled={!password}
+                  startIcon={<WaterDropIcon />}
+                >
+                  Continue
+                </Button>
               </Box>
             )}
           </>

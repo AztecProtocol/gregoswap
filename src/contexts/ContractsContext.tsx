@@ -45,6 +45,7 @@ interface ContractsContextType {
   swap: (amountOut: number, amountInMax: number) => Promise<SentTx>;
   fetchBalances: () => Promise<[bigint, bigint]>;
   simulateOnboardingQueries: () => Promise<[number, bigint, bigint]>;
+  registerContractsForFlow: (flowType: 'swap' | 'drip') => Promise<void>;
   drip: (password: string, recipient: AztecAddress) => Promise<SentTx>;
 }
 
@@ -253,12 +254,83 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     return [exchangeRate, gcBalance, gcpBalance] as [number, bigint, bigint];
   }, [wallet, gregoCoin, gregoCoinPremium, amm, currentAddress]);
 
+  const registerContractsForFlow = useCallback(
+    async (flowType: 'swap' | 'drip') => {
+      if (!wallet || !node) {
+        throw new Error('Wallet not initialized');
+      }
+
+      const gregoCoinAddress = AztecAddress.fromString(activeNetwork.contracts.gregoCoin);
+      const deployerAddress = AztecAddress.fromString(activeNetwork.deployer.address);
+      const contractSalt = Fr.fromString(activeNetwork.contracts.salt);
+      const { TokenContractArtifact } = await import('@aztec/noir-contracts.js/Token');
+
+      if (flowType === 'swap') {
+        // Register GregoCoin, GregoCoinPremium, and AMM
+        const gregoCoinPremiumAddress = AztecAddress.fromString(activeNetwork.contracts.gregoCoinPremium);
+        const liquidityTokenAddress = AztecAddress.fromString(activeNetwork.contracts.liquidityToken);
+        const { AMMContractArtifact } = await import('@aztec/noir-contracts.js/AMM');
+
+        const [ammInstance, gregoCoinInstance, gregoCoinPremiumInstance] = await Promise.all([
+          getContractInstanceFromInstantiationParams(AMMContractArtifact, {
+            salt: contractSalt,
+            deployer: deployerAddress,
+            constructorArgs: [gregoCoinAddress, gregoCoinPremiumAddress, liquidityTokenAddress],
+          }),
+          getContractInstanceFromInstantiationParams(TokenContractArtifact, {
+            salt: contractSalt,
+            deployer: deployerAddress,
+            constructorArgs: [deployerAddress, 'GregoCoin', 'GRG', 18],
+          }),
+          getContractInstanceFromInstantiationParams(TokenContractArtifact, {
+            salt: contractSalt,
+            deployer: deployerAddress,
+            constructorArgs: [deployerAddress, 'GregoCoinPremium', 'GRGP', 18],
+          }),
+        ]);
+
+        await wallet.batch([
+          { name: 'registerContract', args: [ammInstance, AMMContractArtifact, undefined] },
+          { name: 'registerContract', args: [gregoCoinInstance, TokenContractArtifact, undefined] },
+          { name: 'registerContract', args: [gregoCoinPremiumInstance, TokenContractArtifact, undefined] },
+        ] as unknown as any);
+      } else if (flowType === 'drip') {
+        // Register GregoCoin, GregoCoinPremium, and ProofOfPassword
+        const popAddress = AztecAddress.fromString(activeNetwork.contracts.pop);
+        const gregoCoinPremiumAddress = AztecAddress.fromString(activeNetwork.contracts.gregoCoinPremium);
+        const { ProofOfPasswordContractArtifact } = await import('../../contracts/target/ProofOfPassword.ts');
+        const popInstance = await node.getContract(popAddress);
+
+        const [gregoCoinInstance, gregoCoinPremiumInstance] = await Promise.all([
+          getContractInstanceFromInstantiationParams(TokenContractArtifact, {
+            salt: contractSalt,
+            deployer: deployerAddress,
+            constructorArgs: [deployerAddress, 'GregoCoin', 'GRG', 18],
+          }),
+          getContractInstanceFromInstantiationParams(TokenContractArtifact, {
+            salt: contractSalt,
+            deployer: deployerAddress,
+            constructorArgs: [deployerAddress, 'GregoCoinPremium', 'GRGP', 18],
+          }),
+        ]);
+
+        await wallet.batch([
+          { name: 'registerContract', args: [gregoCoinInstance, TokenContractArtifact, undefined] },
+          { name: 'registerContract', args: [gregoCoinPremiumInstance, TokenContractArtifact, undefined] },
+          { name: 'registerContract', args: [popInstance, ProofOfPasswordContractArtifact, undefined] },
+        ] as unknown as any);
+      }
+    },
+    [wallet, node, activeNetwork],
+  );
+
   const value: ContractsContextType = {
     isLoadingContracts,
     getExchangeRate,
     swap,
     fetchBalances,
     simulateOnboardingQueries,
+    registerContractsForFlow,
     drip,
   };
 

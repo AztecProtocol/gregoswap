@@ -4,6 +4,7 @@ import SwapVertIcon from '@mui/icons-material/SwapVert';
 import WaterDropIcon from '@mui/icons-material/WaterDrop';
 import { SwapBox } from './SwapBox';
 import { SwapProgress } from './SwapProgress';
+import { DripProgress } from './DripProgress';
 import { ExchangeRateDisplay } from './ExchangeRateDisplay';
 import { SwapButton } from './SwapButton';
 import { SwapErrorAlert } from './SwapErrorAlert';
@@ -13,11 +14,12 @@ import { useWallet } from '../../contexts/WalletContext';
 import { useOnboarding } from '../../contexts/OnboardingContext';
 import { useSwap } from '../../hooks/useSwap';
 import { useBalances } from '../../hooks/useBalances';
+import { waitForTxWithPhases } from '../../utils/txUtils';
 
 export function SwapContainer() {
-  const { isLoadingContracts } = useContracts();
+  const { isLoadingContracts, drip } = useContracts();
   const { isUsingEmbeddedWallet, currentAddress } = useWallet();
-  const { status: onboardingStatus, isSwapPending, clearSwapPending, startOnboardingFlow } = useOnboarding();
+  const { status: onboardingStatus, isSwapPending, isDripPending, dripPassword, clearSwapPending, clearDripPassword, startOnboardingFlow } = useOnboarding();
 
   const swapErrorRef = useRef<HTMLDivElement | null>(null);
 
@@ -28,9 +30,13 @@ export function SwapContainer() {
   const [fromAmount, setFromAmount] = useState('');
   const [toAmount, setToAmount] = useState('');
 
-  // State for drip modal
+  // State for drip modal (for users already onboarded)
   const [isDripModalOpen, setIsDripModalOpen] = useState(false);
-  const [isDripPending, setIsDripPending] = useState(false);
+
+  // State for drip execution (after onboarding)
+  const [isDripping, setIsDripping] = useState(false);
+  const [dripPhase, setDripPhase] = useState<'sending' | 'mining' | null>(null);
+  const [dripError, setDripError] = useState<string | null>(null);
 
   // Use swap hook for calculations, validation, swap logic, and exchange rate
   const {
@@ -47,6 +53,7 @@ export function SwapContainer() {
   } = useSwap({
     fromAmount,
     toAmount,
+    isDripping,
   });
 
   // Recalculate amounts when exchange rate becomes available
@@ -128,8 +135,8 @@ export function SwapContainer() {
   const handleSwapClick = () => {
     // Check if user needs onboarding
     if (isUsingEmbeddedWallet || onboardingStatus === 'not_started') {
-      // Start onboarding flow with swap pending
-      startOnboardingFlow();
+      // Start onboarding flow with swap type
+      startOnboardingFlow('swap');
     } else if (onboardingStatus === 'completed') {
       // Already onboarded, execute swap directly
       executeSwap();
@@ -147,13 +154,6 @@ export function SwapContainer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onboardingStatus, isSwapPending]);
 
-  // Open drip modal after onboarding completes (if drip was pending)
-  useEffect(() => {
-    if (onboardingStatus === 'completed' && isDripPending) {
-      setIsDripModalOpen(true);
-      setIsDripPending(false);
-    }
-  }, [onboardingStatus, isDripPending]);
 
   // Clear swap pending flag only after swap actually completes
   // (not just when onboarding completes but before swap starts)
@@ -165,14 +165,63 @@ export function SwapContainer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSwapPending, isSwapping]);
 
+  // Execute drip after onboarding completes with password
+  useEffect(() => {
+    async function executeDrip() {
+      if (!isDripPending || !dripPassword || !currentAddress || isDripping) return;
+
+      setIsDripping(true);
+      setDripPhase('sending');
+      setDripError(null);
+
+      try {
+        const sentTx = await drip(dripPassword, currentAddress);
+        await waitForTxWithPhases(sentTx, setDripPhase);
+
+        // Success - refresh balances and clear state
+        refetchBalances();
+        clearDripPassword();
+        setIsDripping(false);
+        setDripPhase(null);
+      } catch (error) {
+        console.error('Drip error:', error);
+        // Extract meaningful error message
+        let errorMessage = 'Failed to claim GregoCoin. Please try again.';
+
+        if (error instanceof Error) {
+          // Check for common error patterns
+          if (error.message.includes('Simulation failed')) {
+            errorMessage = error.message;
+          } else if (error.message.includes('User denied') || error.message.includes('rejected')) {
+            errorMessage = 'Transaction was rejected in wallet';
+          } else if (error.message.includes('password') || error.message.includes('Password')) {
+            errorMessage = 'Invalid password. Please try again.';
+          } else if (error.message.includes('already claimed') || error.message.includes('Already claimed')) {
+            errorMessage = 'You have already claimed your GregoCoin tokens.';
+          } else {
+            errorMessage = error.message;
+          }
+        }
+
+        setDripError(errorMessage);
+        setDripPhase(null);
+        setIsDripping(false);
+        clearDripPassword();
+      }
+    }
+
+    executeDrip();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDripPending, dripPassword, currentAddress]);
+
   // Scroll to error when it appears
   useEffect(() => {
-    if (swapError) {
+    if (swapError || dripError) {
       setTimeout(() => {
         swapErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }, 100);
     }
-  }, [swapError]);
+  }, [swapError, dripError]);
 
   const handleMaxFromClick = () => {
     if (balances.gregoCoin !== null) {
@@ -281,8 +330,7 @@ export function SwapContainer() {
           onClick={() => {
             // Check if user needs to onboard first (using embedded wallet or not yet started)
             if (isUsingEmbeddedWallet || onboardingStatus === 'not_started') {
-              setIsDripPending(true);
-              startOnboardingFlow(false); // No pending swap, just onboarding for drip
+              startOnboardingFlow('drip');
             } else if (onboardingStatus === 'completed') {
               setIsDripModalOpen(true);
             }
@@ -303,12 +351,14 @@ export function SwapContainer() {
       </Box>
 
       {/* Swap Button or Progress */}
-      {isSwapping ? (
+      {isDripping ? (
+        <DripProgress phase={dripPhase} />
+      ) : isSwapping ? (
         <SwapProgress phase={swapPhase} />
       ) : (
         <SwapButton
           onClick={handleSwapClick}
-          disabled={!canSwap}
+          disabled={!canSwap || isDripping}
           loading={isSwapping}
           contractsLoading={isLoadingContracts}
           hasAmount={!!fromAmount && parseFloat(fromAmount) > 0}
@@ -316,7 +366,10 @@ export function SwapContainer() {
       )}
 
       {/* Error Display */}
-      <SwapErrorAlert error={swapError} onDismiss={dismissError} errorRef={swapErrorRef} />
+      <SwapErrorAlert error={swapError || dripError} onDismiss={() => {
+        if (dripError) setDripError(null);
+        if (swapError) dismissError();
+      }} errorRef={swapErrorRef} />
 
       {/* Drip Modal */}
       <DripModal

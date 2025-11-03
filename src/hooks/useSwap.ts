@@ -6,6 +6,7 @@ import { waitForTxWithPhases } from '../utils/txUtils';
 interface UseSwapProps {
   fromAmount: string;
   toAmount: string;
+  isDripping?: boolean;
 }
 
 interface UseSwapReturn {
@@ -32,7 +33,7 @@ interface UseSwapReturn {
 
 const GREGOCOIN_USD_PRICE = 10;
 
-export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
+export function useSwap({ fromAmount, toAmount, isDripping = false }: UseSwapProps): UseSwapReturn {
   // Pull from contexts
   const { swap, isLoadingContracts, getExchangeRate } = useContracts();
   const { status: onboardingStatus, onboardingResult, isSwapPending } = useOnboarding();
@@ -83,7 +84,7 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
   // Fetch exchange rate with auto-refresh every 10 seconds
   useEffect(() => {
     async function fetchExchangeRate() {
-      const isBusy = isLoadingContracts || isSwapping || isSwapPending;
+      const isBusy = isLoadingContracts || isSwapping || isSwapPending || isDripping;
       const isOnboardingInProgress = onboardingStatus !== 'completed' && onboardingStatus !== 'not_started';
 
       if (isBusy || isOnboardingInProgress) {
@@ -123,6 +124,7 @@ export function useSwap({ fromAmount, toAmount }: UseSwapProps): UseSwapReturn {
   }, [
     isLoadingContracts,
     isSwapping,
+    isDripping,
     getExchangeRate,
     onboardingStatus,
     isSwapPending,
