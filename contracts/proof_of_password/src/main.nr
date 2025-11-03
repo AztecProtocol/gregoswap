@@ -6,12 +6,12 @@ use aztec::macros::aztec;
 pub contract ProofOfPassword {
 
     use aztec::{
-        keys::getters::get_public_keys,
         macros::{functions::{external, initializer, internal}, storage::storage},
+        oracle::notes::set_sender_for_tags,
         protocol_types::{
             address::AztecAddress,
             hash::poseidon2_hash,
-            traits::{Hash, Serialize, ToField},
+            traits::{Serialize, ToField},
         },
         state_vars::PublicImmutable,
     };
@@ -50,14 +50,24 @@ pub contract ProofOfPassword {
             f"Invalid password {password}",
         );
 
+        // Safety: PXE will enforce a sender for the tags of the notes created
+        // in the Token.mint function, but this one intented to be called by anyone
+        // that knows the passord, not necessarily the recipient. Chances are this fn 
+        // will be invoked by the MultiCallEntrypoint protocol contract,
+        // which does not set a sender for tags.
+        // We intend the "to" of this function to claim the notes, so we're just calling
+        // the oracle for its sideeffects, making it safe to call
+        unsafe {
+            set_sender_for_tags(to);
+        }
+
         let address = storage.grego_coin_address.read();
         Token::at(address).mint_to_private(to, 1000).call(&mut context);
 
-        let msg_sender_nullifier_public_key_message_hash =
-            get_public_keys(context.msg_sender().unwrap()).npk_m.hash();
-
-        let secret = context.request_nsk_app(msg_sender_nullifier_public_key_message_hash); // get secret key of caller of function
-        let nullifier = poseidon2_hash([context.msg_sender().unwrap().to_field(), secret]); // derive nullifier from sender and secret
+        // Derive nullifier from sender and password. This is still a privacy leak, since 
+        // knowing the password and an address is sufficient to know if someone has used this
+        // contract or not. But at least, they need the password
+        let nullifier = poseidon2_hash([to.to_field(), field_compressed_str.serialize()[0]]); 
         context.push_nullifier(nullifier);
     }
 }

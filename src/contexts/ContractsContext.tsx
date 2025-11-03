@@ -3,7 +3,6 @@ import type { TokenContract } from '@aztec/noir-contracts.js/Token';
 import type { AMMContract } from '@aztec/noir-contracts.js/AMM';
 import { useWallet } from './WalletContext';
 import { useNetwork } from './NetworkContext';
-import type { Wallet } from '@aztec/aztec.js/wallet';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { Fr } from '@aztec/aztec.js/fields';
 import { BatchCall, getContractInstanceFromInstantiationParams, type SentTx } from '@aztec/aztec.js/contracts';
@@ -46,6 +45,7 @@ interface ContractsContextType {
   swap: (amountOut: number, amountInMax: number) => Promise<SentTx>;
   fetchBalances: () => Promise<[bigint, bigint]>;
   simulateOnboardingQueries: () => Promise<[number, bigint, bigint]>;
+  drip: (password: string, recipient: AztecAddress) => Promise<SentTx>;
 }
 
 const ContractsContext = createContext<ContractsContextType | undefined>(undefined);
@@ -162,7 +162,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     async (password: string, recipient: AztecAddress) => {
       const popAddress = AztecAddress.fromString(activeNetwork.contracts.pop);
       const { ProofOfPasswordContract, ProofOfPasswordContractArtifact } = await import(
-        '../../contracts/target/ProofOfPassword'
+        '../../contracts/target/ProofOfPassword.ts'
       );
       const { SponsoredFPCContractArtifact } = await import('@aztec/noir-contracts.js/SponsoredFPC');
       const sponsoredFPCInstance = await getContractInstanceFromInstantiationParams(SponsoredFPCContractArtifact, {
@@ -259,6 +259,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     swap,
     fetchBalances,
     simulateOnboardingQueries,
+    drip,
   };
 
   return <ContractsContext.Provider value={value}>{children}</ContractsContext.Provider>;

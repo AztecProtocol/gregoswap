@@ -1,11 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
-import { Paper, Box, IconButton } from '@mui/material';
+import { Paper, Box, IconButton, Button, Typography } from '@mui/material';
 import SwapVertIcon from '@mui/icons-material/SwapVert';
+import WaterDropIcon from '@mui/icons-material/WaterDrop';
 import { SwapBox } from './SwapBox';
 import { SwapProgress } from './SwapProgress';
 import { ExchangeRateDisplay } from './ExchangeRateDisplay';
 import { SwapButton } from './SwapButton';
 import { SwapErrorAlert } from './SwapErrorAlert';
+import { DripModal } from '../DripModal';
 import { useContracts } from '../../contexts/ContractsContext';
 import { useWallet } from '../../contexts/WalletContext';
 import { useOnboarding } from '../../contexts/OnboardingContext';
@@ -25,6 +27,10 @@ export function SwapContainer() {
   // State for amounts
   const [fromAmount, setFromAmount] = useState('');
   const [toAmount, setToAmount] = useState('');
+
+  // State for drip modal
+  const [isDripModalOpen, setIsDripModalOpen] = useState(false);
+  const [isDripPending, setIsDripPending] = useState(false);
 
   // Use swap hook for calculations, validation, swap logic, and exchange rate
   const {
@@ -140,6 +146,14 @@ export function SwapContainer() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onboardingStatus, isSwapPending]);
+
+  // Open drip modal after onboarding completes (if drip was pending)
+  useEffect(() => {
+    if (onboardingStatus === 'completed' && isDripPending) {
+      setIsDripModalOpen(true);
+      setIsDripPending(false);
+    }
+  }, [onboardingStatus, isDripPending]);
 
   // Clear swap pending flag only after swap actually completes
   // (not just when onboarding completes but before swap starts)
@@ -258,6 +272,36 @@ export function SwapContainer() {
       {/* Exchange Rate Info */}
       <ExchangeRateDisplay exchangeRate={exchangeRate} isLoadingRate={isLoadingRate} />
 
+      {/* Don't have GregoCoin? Button */}
+      <Box sx={{ mt: 2, mb: 1, textAlign: 'center' }}>
+        <Button
+          size="small"
+          startIcon={<WaterDropIcon />}
+          variant="text"
+          onClick={() => {
+            // Check if user needs to onboard first (using embedded wallet or not yet started)
+            if (isUsingEmbeddedWallet || onboardingStatus === 'not_started') {
+              setIsDripPending(true);
+              startOnboardingFlow(false); // No pending swap, just onboarding for drip
+            } else if (onboardingStatus === 'completed') {
+              setIsDripModalOpen(true);
+            }
+          }}
+          sx={{
+            textTransform: 'none',
+            color: 'text.secondary',
+            fontSize: '0.8125rem',
+            fontWeight: 400,
+            '&:hover': {
+              color: 'primary.main',
+              backgroundColor: 'rgba(212, 255, 40, 0.05)',
+            },
+          }}
+        >
+          Don't have GregoCoin?
+        </Button>
+      </Box>
+
       {/* Swap Button or Progress */}
       {isSwapping ? (
         <SwapProgress phase={swapPhase} />
@@ -273,6 +317,13 @@ export function SwapContainer() {
 
       {/* Error Display */}
       <SwapErrorAlert error={swapError} onDismiss={dismissError} errorRef={swapErrorRef} />
+
+      {/* Drip Modal */}
+      <DripModal
+        open={isDripModalOpen}
+        onClose={() => setIsDripModalOpen(false)}
+        onSuccess={() => refetchBalances()}
+      />
     </Paper>
   );
 }
