@@ -7,6 +7,7 @@ interface UseSwapProps {
   fromAmount: string;
   toAmount: string;
   isDripping?: boolean;
+  fromTokenBalance?: bigint | null;
 }
 
 interface UseSwapReturn {
@@ -33,7 +34,7 @@ interface UseSwapReturn {
 
 const GREGOCOIN_USD_PRICE = 10;
 
-export function useSwap({ fromAmount, toAmount, isDripping = false }: UseSwapProps): UseSwapReturn {
+export function useSwap({ fromAmount, toAmount, isDripping = false, fromTokenBalance = null }: UseSwapProps): UseSwapReturn {
   // Pull from contexts
   const { swap, isLoadingContracts, getExchangeRate } = useContracts();
   const { status: onboardingStatus, onboardingResult, isSwapPending } = useOnboarding();
@@ -143,6 +144,15 @@ export function useSwap({ fromAmount, toAmount, isDripping = false }: UseSwapPro
       return;
     }
 
+    // Check if FROM amount exceeds balance
+    if (fromTokenBalance !== null && fromTokenBalance !== undefined) {
+      const fromAmountBigInt = BigInt(Math.round(parseFloat(fromAmount)));
+      if (fromAmountBigInt > fromTokenBalance) {
+        setSwapError('Insufficient GregoCoin balance for swap');
+        return;
+      }
+    }
+
     setIsSwapping(true);
     setSwapPhase('sending');
 
@@ -159,7 +169,7 @@ export function useSwap({ fromAmount, toAmount, isDripping = false }: UseSwapPro
         } else if (error.message.includes('User denied') || error.message.includes('rejected')) {
           errorMessage = 'Transaction was rejected in wallet';
         } else if (error.message.includes('Insufficient') || error.message.includes('insufficient')) {
-          errorMessage = 'Insufficient balance for swap';
+          errorMessage = 'Insufficient GregoCoin balance for swap';
         } else {
           errorMessage = error.message;
         }
@@ -169,7 +179,7 @@ export function useSwap({ fromAmount, toAmount, isDripping = false }: UseSwapPro
     } finally {
       setIsSwapping(false);
     }
-  }, [isLoadingContracts, fromAmount, toAmount, swap]);
+  }, [isLoadingContracts, fromAmount, toAmount, swap, fromTokenBalance]);
 
   const dismissError = () => {
     setSwapError(null);

@@ -36,7 +36,7 @@ interface OnboardingModalProps {
 }
 
 export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps) {
-  const { status, error, currentStep, totalSteps, resetOnboarding, flowType, currentFlow, closeModal, completeDripOnboarding } =
+  const { status, error, currentStep, totalSteps, resetOnboarding, flowType, currentFlow, closeModal, completeDripOnboarding, switchedToDrip } =
     useOnboarding();
   const { connectWallet } = useWallet();
   const [accounts, setAccounts] = useState<Aliased<AztecAddress>[]>([]);
@@ -123,10 +123,10 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
     onAccountSelect(address);
   };
 
-  const handlePasswordSubmit = () => {
+  const handlePasswordSubmit = async () => {
     if (!password) return;
     // Complete onboarding with password, which will trigger drip execution in SwapContainer
-    completeDripOnboarding(password);
+    await completeDripOnboarding(password);
     setPassword('');
   };
 
@@ -485,8 +485,15 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
             )}
 
             {/* Drip flow: show password input */}
-            {status === 'awaiting_drip' && flowType === 'drip' && (
+            {(status === 'awaiting_drip' || status === 'registering_drip') && flowType === 'drip' && (
               <Box sx={{ mt: 3 }}>
+                {switchedToDrip && (
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    <Typography variant="body2">
+                      We noticed you don't have any tokens yet. Let's get you started with some free GregoCoin!
+                    </Typography>
+                  </Alert>
+                )}
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                   Enter the password to claim your free GregoCoin tokens:
                 </Typography>
@@ -510,10 +517,10 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
                   fullWidth
                   variant="contained"
                   onClick={handlePasswordSubmit}
-                  disabled={!password}
-                  startIcon={<WaterDropIcon />}
+                  disabled={!password || status === 'registering_drip'}
+                  startIcon={status === 'registering_drip' ? <CircularProgress size={20} /> : <WaterDropIcon />}
                 >
-                  Continue
+                  {status === 'registering_drip' ? 'Setting up...' : 'Continue'}
                 </Button>
               </Box>
             )}

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Paper, Box, IconButton, Button, Typography } from '@mui/material';
+import { Paper, Box, Button, Typography } from '@mui/material';
 import SwapVertIcon from '@mui/icons-material/SwapVert';
 import WaterDropIcon from '@mui/icons-material/WaterDrop';
 import { SwapBox } from './SwapBox';
@@ -54,6 +54,7 @@ export function SwapContainer() {
     fromAmount,
     toAmount,
     isDripping,
+    fromTokenBalance: balances.gregoCoin,
   });
 
   // Recalculate amounts when exchange rate becomes available
@@ -124,12 +125,6 @@ export function SwapContainer() {
         setFromAmount((numValue / exchangeRate).toFixed(6));
       }
     }
-  };
-
-  const handleSwapDirection = () => {
-    const tempFrom = fromAmount;
-    setFromAmount(toAmount);
-    setToAmount(tempFrom);
   };
 
   const handleSwapClick = () => {
@@ -272,35 +267,25 @@ export function SwapContainer() {
         placeholder={fromPlaceholder}
       />
 
-      {/* Swap Direction Button */}
+      {/* Swap Direction Icon (visual only) */}
       <Box sx={{ display: 'flex', justifyContent: 'center', my: -2, position: 'relative', zIndex: 1 }}>
-        <IconButton
-          onClick={handleSwapDirection}
-          disabled={isSwapping || isLoadingContracts || isLoadingRate || exchangeRate === undefined}
+        <Box
           sx={{
             backgroundColor: 'rgba(18, 18, 28, 1)',
             border: '2px solid',
             borderColor: 'rgba(212, 255, 40, 0.3)',
             color: 'primary.main',
             boxShadow: '0 0 0 4px rgba(18, 18, 28, 1)',
-            '&:hover': {
-              backgroundColor: 'primary.main',
-              borderColor: 'primary.main',
-              color: '#00122E',
-              transform: 'rotate(180deg)',
-              boxShadow: '0 0 0 4px rgba(18, 18, 28, 1)',
-            },
-            '&:disabled': {
-              opacity: 0.5,
-              color: 'text.secondary',
-              backgroundColor: 'rgba(18, 18, 28, 1)',
-              boxShadow: '0 0 0 4px rgba(18, 18, 28, 1)',
-            },
-            transition: 'all 0.3s ease-in-out',
+            borderRadius: '50%',
+            width: 40,
+            height: 40,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
           <SwapVertIcon />
-        </IconButton>
+        </Box>
       </Box>
 
       {/* To Token */}

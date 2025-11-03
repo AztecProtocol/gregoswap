@@ -8,6 +8,7 @@ import { Fr } from '@aztec/aztec.js/fields';
 import { BatchCall, getContractInstanceFromInstantiationParams, type SentTx } from '@aztec/aztec.js/contracts';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { SPONSORED_FPC_SALT } from '@aztec/constants';
+import { ProofOfPasswordContract } from '../../contracts/target/ProofOfPassword.ts';
 
 class BigDecimal {
   // Configuration: private constants
@@ -100,18 +101,33 @@ async function getContractRegistrationBatch(
   ];
 }
 
+async function getSponsoredFPCData() {
+  const { SponsoredFPCContractArtifact } = await import('@aztec/noir-contracts.js/SponsoredFPC');
+  const sponsoredFPCInstance = await getContractInstanceFromInstantiationParams(SponsoredFPCContractArtifact, {
+    salt: new Fr(SPONSORED_FPC_SALT),
+  });
+  return { artifact: SponsoredFPCContractArtifact, instance: sponsoredFPCInstance };
+}
+
 export function ContractsProvider({ children }: ContractsProviderProps) {
-  const { wallet, currentAddress, isLoading: walletLoading, node } = useWallet();
+  const { wallet, currentAddress, isLoading: walletLoading, node, isUsingEmbeddedWallet } = useWallet();
   const { activeNetwork } = useNetwork();
   const [gregoCoin, setGregoCoin] = useState<TokenContract | null>(null);
   const [gregoCoinPremium, setGregoCoinPremium] = useState<TokenContract | null>(null);
   const [amm, setAmm] = useState<AMMContract | null>(null);
+  const [pop, setPop] = useState<ProofOfPasswordContract | null>(null);
   const [isLoadingContracts, setIsLoadingContracts] = useState(true);
 
   useEffect(() => {
     async function initializeContracts() {
       if (walletLoading || !wallet) {
         setIsLoadingContracts(walletLoading);
+        return;
+      }
+
+      // For external wallets, don't initialize until onboarding registers contracts
+      // Keep isLoadingContracts as true until registerContractsForFlow is called
+      if (!isUsingEmbeddedWallet) {
         return;
       }
 
@@ -126,8 +142,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         const deployerAddress = AztecAddress.fromString(activeNetwork.deployer.address);
         const contractSalt = Fr.fromString(activeNetwork.contracts.salt);
 
-        // Register contracts using the helper function
-        // TODO: Remove 'as unknown as any' when correct types are exported from the library
+        // Register contracts only for embedded wallet (external wallet registers during onboarding)
         const registrationBatch = await getContractRegistrationBatch(
           gregoCoinAddress,
           gregoCoinPremiumAddress,
@@ -135,10 +150,9 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
           deployerAddress,
           contractSalt,
         );
-
         await wallet.batch(registrationBatch as unknown as any);
 
-        // Instantiate contracts
+        // Instantiate contracts (only runs after registration for external wallets)
         const { TokenContract } = await import('@aztec/noir-contracts.js/Token');
         const { AMMContract } = await import('@aztec/noir-contracts.js/AMM');
 
@@ -157,25 +171,11 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     }
 
     initializeContracts();
-  }, [wallet, walletLoading]);
+  }, [wallet, walletLoading, activeNetwork, isUsingEmbeddedWallet]);
 
   const drip = useCallback(
     async (password: string, recipient: AztecAddress) => {
-      const popAddress = AztecAddress.fromString(activeNetwork.contracts.pop);
-      const { ProofOfPasswordContract, ProofOfPasswordContractArtifact } = await import(
-        '../../contracts/target/ProofOfPassword.ts'
-      );
-      const { SponsoredFPCContractArtifact } = await import('@aztec/noir-contracts.js/SponsoredFPC');
-      const sponsoredFPCInstance = await getContractInstanceFromInstantiationParams(SponsoredFPCContractArtifact, {
-        salt: new Fr(SPONSORED_FPC_SALT),
-      });
-
-      const instance = await node.getContract(popAddress);
-      await wallet.batch([
-        { name: 'registerContract', args: [instance, ProofOfPasswordContractArtifact, undefined] },
-        { name: 'registerContract', args: [sponsoredFPCInstance, SponsoredFPCContractArtifact, undefined] },
-      ]);
-      const pop = await ProofOfPasswordContract.at(popAddress, wallet);
+      const { instance: sponsoredFPCInstance } = await getSponsoredFPCData();
       const sentTx = await pop.methods.check_password_and_mint(password, recipient).send({
         from: AztecAddress.ZERO,
         fee: {
@@ -263,62 +263,54 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
       const gregoCoinAddress = AztecAddress.fromString(activeNetwork.contracts.gregoCoin);
       const deployerAddress = AztecAddress.fromString(activeNetwork.deployer.address);
       const contractSalt = Fr.fromString(activeNetwork.contracts.salt);
-      const { TokenContractArtifact } = await import('@aztec/noir-contracts.js/Token');
 
       if (flowType === 'swap') {
-        // Register GregoCoin, GregoCoinPremium, and AMM
+        // Register GregoCoin, GregoCoinPremium, and AMM for external wallet onboarding
+        setIsLoadingContracts(true);
+
         const gregoCoinPremiumAddress = AztecAddress.fromString(activeNetwork.contracts.gregoCoinPremium);
         const liquidityTokenAddress = AztecAddress.fromString(activeNetwork.contracts.liquidityToken);
-        const { AMMContractArtifact } = await import('@aztec/noir-contracts.js/AMM');
+        const ammAddress = AztecAddress.fromString(activeNetwork.contracts.amm);
 
-        const [ammInstance, gregoCoinInstance, gregoCoinPremiumInstance] = await Promise.all([
-          getContractInstanceFromInstantiationParams(AMMContractArtifact, {
-            salt: contractSalt,
-            deployer: deployerAddress,
-            constructorArgs: [gregoCoinAddress, gregoCoinPremiumAddress, liquidityTokenAddress],
-          }),
-          getContractInstanceFromInstantiationParams(TokenContractArtifact, {
-            salt: contractSalt,
-            deployer: deployerAddress,
-            constructorArgs: [deployerAddress, 'GregoCoin', 'GRG', 18],
-          }),
-          getContractInstanceFromInstantiationParams(TokenContractArtifact, {
-            salt: contractSalt,
-            deployer: deployerAddress,
-            constructorArgs: [deployerAddress, 'GregoCoinPremium', 'GRGP', 18],
-          }),
-        ]);
+        const registrationBatch = await getContractRegistrationBatch(
+          gregoCoinAddress,
+          gregoCoinPremiumAddress,
+          liquidityTokenAddress,
+          deployerAddress,
+          contractSalt,
+        );
+        await wallet.batch(registrationBatch as unknown as any);
 
-        await wallet.batch([
-          { name: 'registerContract', args: [ammInstance, AMMContractArtifact, undefined] },
-          { name: 'registerContract', args: [gregoCoinInstance, TokenContractArtifact, undefined] },
-          { name: 'registerContract', args: [gregoCoinPremiumInstance, TokenContractArtifact, undefined] },
-        ] as unknown as any);
+        // After registration, instantiate the contracts
+        const { TokenContract } = await import('@aztec/noir-contracts.js/Token');
+        const { AMMContract } = await import('@aztec/noir-contracts.js/AMM');
+
+        const gregoCoinContract = await TokenContract.at(gregoCoinAddress, wallet);
+        const gregoCoinPremiumContract = await TokenContract.at(gregoCoinPremiumAddress, wallet);
+        const ammContract = await AMMContract.at(ammAddress, wallet);
+
+        setGregoCoin(gregoCoinContract);
+        setGregoCoinPremium(gregoCoinPremiumContract);
+        setAmm(ammContract);
+
+        setIsLoadingContracts(false);
       } else if (flowType === 'drip') {
-        // Register GregoCoin, GregoCoinPremium, and ProofOfPassword
+        // Register only ProofOfPassword (GregoCoin and GregoCoinPremium already registered during swap flow)
         const popAddress = AztecAddress.fromString(activeNetwork.contracts.pop);
-        const gregoCoinPremiumAddress = AztecAddress.fromString(activeNetwork.contracts.gregoCoinPremium);
-        const { ProofOfPasswordContractArtifact } = await import('../../contracts/target/ProofOfPassword.ts');
-        const popInstance = await node.getContract(popAddress);
+        const { ProofOfPasswordContract, ProofOfPasswordContractArtifact } = await import(
+          '../../contracts/target/ProofOfPassword.ts'
+        );
 
-        const [gregoCoinInstance, gregoCoinPremiumInstance] = await Promise.all([
-          getContractInstanceFromInstantiationParams(TokenContractArtifact, {
-            salt: contractSalt,
-            deployer: deployerAddress,
-            constructorArgs: [deployerAddress, 'GregoCoin', 'GRG', 18],
-          }),
-          getContractInstanceFromInstantiationParams(TokenContractArtifact, {
-            salt: contractSalt,
-            deployer: deployerAddress,
-            constructorArgs: [deployerAddress, 'GregoCoinPremium', 'GRGP', 18],
-          }),
-        ]);
+        const instance = await node.getContract(popAddress);
+        const { instance: sponsoredFPCInstance, artifact: SponsoredFPCContractArtifact } = await getSponsoredFPCData();
 
         await wallet.batch([
-          { name: 'registerContract', args: [gregoCoinInstance, TokenContractArtifact, undefined] },
-          { name: 'registerContract', args: [gregoCoinPremiumInstance, TokenContractArtifact, undefined] },
-          { name: 'registerContract', args: [popInstance, ProofOfPasswordContractArtifact, undefined] },
-        ] as unknown as any);
+          { name: 'registerContract', args: [instance, ProofOfPasswordContractArtifact, undefined] },
+          { name: 'registerContract', args: [sponsoredFPCInstance, SponsoredFPCContractArtifact, undefined] },
+        ]);
+
+        setPop(await ProofOfPasswordContract.at(popAddress, wallet));
+        setIsLoadingContracts(false);
       }
     },
     [wallet, node, activeNetwork],
