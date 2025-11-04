@@ -958,49 +958,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@aztec/playground@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "@aztec/playground@workspace:."
-  dependencies:
-    "@aztec/accounts": "npm:v3.0.0-devnet.2"
-    "@aztec/aztec.js": "npm:v3.0.0-devnet.2"
-    "@aztec/constants": "npm:v3.0.0-devnet.2"
-    "@aztec/entrypoints": "npm:v3.0.0-devnet.2"
-    "@aztec/foundation": "npm:v3.0.0-devnet.2"
-    "@aztec/noir-contracts.js": "npm:v3.0.0-devnet.2"
-    "@aztec/pxe": "npm:v3.0.0-devnet.2"
-    "@aztec/stdlib": "npm:v3.0.0-devnet.2"
-    "@aztec/test-wallet": "npm:v3.0.0-devnet.2"
-    "@emotion/react": "npm:^11.14.0"
-    "@emotion/styled": "npm:^11.14.0"
-    "@eslint/js": "npm:^9.18.0"
-    "@mui/icons-material": "npm:^6.3.1"
-    "@mui/material": "npm:^6.3.1"
-    "@mui/styles": "npm:^6.3.1"
-    "@playwright/test": "npm:1.49.0"
-    "@types/buffer-json": "npm:^2"
-    "@types/node": "npm:^22.15.17"
-    "@types/react": "npm:^19.0.6"
-    "@types/react-dom": "npm:^19.0.3"
-    "@vitejs/plugin-react-swc": "npm:^3.7.2"
-    buffer-json: "npm:^2.0.0"
-    eslint: "npm:^9.26.0"
-    eslint-config-prettier: "npm:^10.1.8"
-    eslint-plugin-react-hooks: "npm:^5.1.0"
-    eslint-plugin-react-refresh: "npm:^0.4.18"
-    globals: "npm:^15.14.0"
-    prettier: "npm:^3.5.3"
-    react: "npm:^18.3.1"
-    react-dom: "npm:^18.3.1"
-    react-dropzone: "npm:^14.3.5"
-    typescript: "npm:~5.7.3"
-    typescript-eslint: "npm:^8.11.0"
-    vite: "npm:^7.1.4"
-    vite-plugin-node-polyfills: "npm:^0.24.0"
-    zod: "npm:^3.23.8"
-  languageName: unknown
-  linkType: soft
-
 "@aztec/protocol-contracts@npm:3.0.0-devnet.2":
   version: 3.0.0-devnet.2
   resolution: "@aztec/protocol-contracts@npm:3.0.0-devnet.2"
@@ -5971,6 +5928,49 @@ __metadata:
   checksum: 10c0/e951259d8cd2e0d196c72ec711add7115d42eb9a8146c8eeda5b8d3ac91e5dd816b9cd68920726d9fd4490368e7ed86e9c423f40db87e2d8dfafa00fa17c3a31
   languageName: node
   linkType: hard
+
+"gregoswap@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "gregoswap@workspace:."
+  dependencies:
+    "@aztec/accounts": "npm:v3.0.0-devnet.2"
+    "@aztec/aztec.js": "npm:v3.0.0-devnet.2"
+    "@aztec/constants": "npm:v3.0.0-devnet.2"
+    "@aztec/entrypoints": "npm:v3.0.0-devnet.2"
+    "@aztec/foundation": "npm:v3.0.0-devnet.2"
+    "@aztec/noir-contracts.js": "npm:v3.0.0-devnet.2"
+    "@aztec/pxe": "npm:v3.0.0-devnet.2"
+    "@aztec/stdlib": "npm:v3.0.0-devnet.2"
+    "@aztec/test-wallet": "npm:v3.0.0-devnet.2"
+    "@emotion/react": "npm:^11.14.0"
+    "@emotion/styled": "npm:^11.14.0"
+    "@eslint/js": "npm:^9.18.0"
+    "@mui/icons-material": "npm:^6.3.1"
+    "@mui/material": "npm:^6.3.1"
+    "@mui/styles": "npm:^6.3.1"
+    "@playwright/test": "npm:1.49.0"
+    "@types/buffer-json": "npm:^2"
+    "@types/node": "npm:^22.15.17"
+    "@types/react": "npm:^19.0.6"
+    "@types/react-dom": "npm:^19.0.3"
+    "@vitejs/plugin-react-swc": "npm:^3.7.2"
+    buffer-json: "npm:^2.0.0"
+    eslint: "npm:^9.26.0"
+    eslint-config-prettier: "npm:^10.1.8"
+    eslint-plugin-react-hooks: "npm:^5.1.0"
+    eslint-plugin-react-refresh: "npm:^0.4.18"
+    globals: "npm:^15.14.0"
+    prettier: "npm:^3.5.3"
+    react: "npm:^18.3.1"
+    react-dom: "npm:^18.3.1"
+    react-dropzone: "npm:^14.3.5"
+    typescript: "npm:~5.7.3"
+    typescript-eslint: "npm:^8.11.0"
+    vite: "npm:^7.1.4"
+    vite-plugin-node-polyfills: "npm:^0.24.0"
+    zod: "npm:^3.23.8"
+  languageName: unknown
+  linkType: soft
 
 "gtoken@npm:^7.0.0":
   version: 7.1.0
