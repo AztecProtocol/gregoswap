@@ -16,7 +16,7 @@ export function SwapButton({ onClick, disabled, loading, contractsLoading, hasAm
     if (!hasAmount) {
       return 'Enter an amount';
     }
-    return 'Swap';
+    return 'Want GregoCoinPremium?';
   };
 
   return (

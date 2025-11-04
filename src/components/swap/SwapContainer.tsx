@@ -326,37 +326,6 @@ export function SwapContainer() {
       {/* Exchange Rate Info */}
       <ExchangeRateDisplay exchangeRate={exchangeRate} isLoadingRate={isLoadingRate} />
 
-      {/* Don't have GregoCoin? Button */}
-      <Box sx={{ mt: 2, mb: 1, textAlign: 'center' }}>
-        <Button
-          size="small"
-          startIcon={<WaterDropIcon />}
-          variant="text"
-          onClick={() => {
-            // Check if user needs to onboard first (using embedded wallet or not yet started)
-            if (isUsingEmbeddedWallet || onboardingStatus === 'not_started') {
-              // Start swap flow - it will automatically switch to drip if user has no tokens
-              startOnboardingFlow('swap', false);
-            } else if (onboardingStatus === 'completed') {
-              // Already onboarded, show drip modal directly
-              setIsDripModalOpen(true);
-            }
-          }}
-          sx={{
-            textTransform: 'none',
-            color: 'text.secondary',
-            fontSize: '0.8125rem',
-            fontWeight: 400,
-            '&:hover': {
-              color: 'primary.main',
-              backgroundColor: 'rgba(212, 255, 40, 0.05)',
-            },
-          }}
-        >
-          Don't have GregoCoin?
-        </Button>
-      </Box>
-
       {/* Swap Button or Progress */}
       {isDripping ? (
         <DripProgress phase={dripPhase} />
