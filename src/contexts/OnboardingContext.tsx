@@ -32,7 +32,7 @@ export const FLOW_CONFIGS: Record<OnboardingFlowType, FlowConfig> = {
     type: 'swap',
     steps: [
       { label: 'Connect Wallet', description: 'Select your account from the wallet extension' },
-      { label: 'Register Contracts', description: 'Setting up token and AMM contracts' },
+      { label: 'Register Contracts', description: 'Setting up contracts' },
       { label: 'Approve Queries', description: 'Review and approve batched queries in your wallet' },
     ],
     totalSteps: 3,
@@ -42,7 +42,7 @@ export const FLOW_CONFIGS: Record<OnboardingFlowType, FlowConfig> = {
     type: 'drip',
     steps: [
       { label: 'Connect Wallet', description: 'Select your account from the wallet extension' },
-      { label: 'Setup Contracts', description: 'Setting up token contracts and checking balances' },
+      { label: 'Setup Contracts', description: 'Setting up contracts and checking balances' },
       { label: 'Claim Tokens', description: 'Enter password to receive free GregoCoin' },
     ],
     totalSteps: 3,
@@ -148,13 +148,17 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
       case 'connecting_wallet':
         return 1;
       case 'registering_contracts':
+        return 2; // Step 2 - registering base contracts
       case 'simulating_queries':
-        return 2; // Combined setup step for drip
-      case 'awaiting_drip':
+        // For swap flow: step 3 (Approve Queries)
+        // For drip flow (before switching): step 2 (still setting up)
+        return flowType === 'swap' ? 3 : 2;
       case 'registering_drip':
-        return 3; // Claim tokens step for drip (includes registration after password entry)
+        return 2; // Drip flow step 2 - registering drip-specific contracts
+      case 'awaiting_drip':
+        return 3; // Drip flow step 3 - waiting for password
       case 'completed':
-        return flowType === 'drip' ? 3 : 3; // Final step is 3 for both flows
+        return 3; // Final step is 3 for both flows
       default:
         return 0;
     }
@@ -187,7 +191,12 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
       try {
         // Step 1: After wallet connection, register all base contracts
         // (GregoCoin, GregoCoinPremium, AMM) regardless of initial flow type
-        if (status === 'connecting_wallet' && currentAddress && !isUsingEmbeddedWallet && !hasRegisteredBaseContractsRef.current) {
+        if (
+          status === 'connecting_wallet' &&
+          currentAddress &&
+          !isUsingEmbeddedWallet &&
+          !hasRegisteredBaseContractsRef.current
+        ) {
           hasRegisteredBaseContractsRef.current = true;
           setStatus('registering_contracts');
           // Always register swap contracts first (they're needed for both flows)
@@ -211,17 +220,23 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
           const hasNoTokens = gcBalance === 0n && gcpBalance === 0n;
 
           if (hasNoTokens) {
-            // User has no tokens - switch to drip flow
-            // Mark that we switched (for displaying explanation to user)
+            // User has no tokens - switch to drip flow and register ProofOfPassword contracts
             setSwitchedToDrip(true);
             setFlowType('drip');
-            // Go directly to awaiting_drip - ProofOfPassword will be registered when user submits password
-            setStatus('awaiting_drip');
+            setStatus('registering_drip');
+            // Register ProofOfPassword contract before showing password prompt
+            await registerContractsForFlow('drip');
           } else {
             // User has tokens - complete swap onboarding
             setFlowType('swap');
             completeOnboarding();
           }
+        }
+
+        // Step 3: After drip contracts are registered, show password prompt
+        if (status === 'registering_drip' && !isLoadingContracts && currentAddress) {
+          // Registration is complete, now wait for user to enter password
+          setStatus('awaiting_drip');
         }
       } catch (error) {
         setStatus('error', error instanceof Error ? error.message : 'Onboarding failed');
@@ -272,17 +287,14 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     setIsOnboardingModalOpen(false);
   }, [flowType]);
 
-  const completeDripOnboarding = useCallback(async (password: string) => {
-    try {
+  const completeDripOnboarding = useCallback(
+    async (password: string) => {
+      // Registration already happened in step 2, just store password and complete
       setDripPassword(password);
-      setStatus('registering_drip');
-      // Register ProofOfPassword contract before completing
-      await registerContractsForFlow('drip');
       completeOnboarding();
-    } catch (error) {
-      setStatus('error', error instanceof Error ? error.message : 'Failed to register drip contract');
-    }
-  }, [completeOnboarding, registerContractsForFlow, setStatus]);
+    },
+    [completeOnboarding],
+  );
 
   const clearDripPassword = useCallback(() => {
     setDripPassword(null);

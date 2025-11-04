@@ -241,6 +241,9 @@ export function SwapContainer() {
   const fromPlaceholder = isRateUnavailable && toAmount !== '' ? '...' : '0.0';
   const toPlaceholder = isRateUnavailable && fromAmount !== '' ? '...' : '0.0';
 
+  // Calculate if FROM amount exceeds balance
+  const fromHasError = showBalance && balances.gregoCoin !== null && fromAmount !== '' && parseFloat(fromAmount) > Number(balances.gregoCoin);
+
   return (
     <Paper
       elevation={3}
@@ -265,6 +268,7 @@ export function SwapContainer() {
         isLoadingBalance={isLoadingBalances}
         onMaxClick={handleMaxFromClick}
         placeholder={fromPlaceholder}
+        hasError={fromHasError}
       />
 
       {/* Swap Direction Icon (visual only) */}

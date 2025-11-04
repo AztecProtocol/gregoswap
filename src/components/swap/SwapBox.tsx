@@ -12,9 +12,10 @@ interface SwapBoxProps {
   isLoadingBalance?: boolean;
   onMaxClick?: () => void;
   placeholder?: string;
+  hasError?: boolean;
 }
 
-export function SwapBox({ label, tokenName, value, onChange, disabled = false, usdValue, balance, showBalance = false, isLoadingBalance = false, onMaxClick, placeholder = '0.0' }: SwapBoxProps) {
+export function SwapBox({ label, tokenName, value, onChange, disabled = false, usdValue, balance, showBalance = false, isLoadingBalance = false, onMaxClick, placeholder = '0.0', hasError = false }: SwapBoxProps) {
   // Format balance: balance is stored as whole units (not wei)
   const formatBalance = (bal: bigint | null | undefined, loading: boolean): string => {
     // If loading, always show "..." regardless of whether we have old data
@@ -28,23 +29,9 @@ export function SwapBox({ label, tokenName, value, onChange, disabled = false, u
 
     // Only allow numbers and decimal point
     if (newValue === '' || /^\d*\.?\d*$/.test(newValue)) {
-      // If balance exists and showBalance is true, validate against balance
-      if (showBalance && balance !== null && balance !== undefined && newValue !== '') {
-        const numericValue = parseFloat(newValue);
-        const maxBalance = Number(balance);
-
-        // Only allow values up to the balance
-        if (numericValue > maxBalance) {
-          return; // Don't update if exceeds balance
-        }
-      }
-
       onChange(newValue);
     }
   };
-
-  // Calculate if value exceeds balance internally
-  const hasError = showBalance && balance !== null && value !== '' && parseFloat(value) > Number(balance);
 
   return (
     <Paper

@@ -484,46 +484,52 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
               </Box>
             )}
 
-            {/* Drip flow: show password input */}
-            {(status === 'awaiting_drip' || status === 'registering_drip') && flowType === 'drip' && (
+            {/* Drip flow: show info message during registration */}
+            {status === 'registering_drip' && flowType === 'drip' && switchedToDrip && (
               <Box sx={{ mt: 3 }}>
-                {switchedToDrip && (
-                  <Alert severity="info" sx={{ mb: 2 }}>
-                    <Typography variant="body2">
-                      We noticed you don't have any tokens yet. Let's get you started with some free GregoCoin!
-                    </Typography>
-                  </Alert>
-                )}
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Enter the password to claim your free GregoCoin tokens:
-                </Typography>
-
-                <TextField
-                  fullWidth
-                  type="password"
-                  label="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoFocus
-                  sx={{ mb: 2 }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && password) {
-                      handlePasswordSubmit();
-                    }
-                  }}
-                />
-
-                <Button
-                  fullWidth
-                  variant="contained"
-                  onClick={handlePasswordSubmit}
-                  disabled={!password || status === 'registering_drip'}
-                  startIcon={status === 'registering_drip' ? <CircularProgress size={20} /> : <WaterDropIcon />}
-                >
-                  {status === 'registering_drip' ? 'Setting up...' : 'Continue'}
-                </Button>
+                <Alert severity="info">
+                  <Typography variant="body2">
+                    We noticed you don't have any tokens yet. Let's get you started with some free GregoCoin!
+                  </Typography>
+                </Alert>
               </Box>
             )}
+
+            {/* Drip flow: show password input - only when awaiting password, not during registration */}
+            <Collapse in={status === 'awaiting_drip' && flowType === 'drip'} timeout={400}>
+              {status === 'awaiting_drip' && flowType === 'drip' && (
+                <Box sx={{ mt: 3 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Enter the password to claim your free GregoCoin tokens:
+                  </Typography>
+
+                  <TextField
+                    fullWidth
+                    type="password"
+                    label="Password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoFocus
+                    sx={{ mb: 2 }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && password) {
+                        handlePasswordSubmit();
+                      }
+                    }}
+                  />
+
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    onClick={handlePasswordSubmit}
+                    disabled={!password}
+                    startIcon={<WaterDropIcon />}
+                  >
+                    Continue
+                  </Button>
+                </Box>
+              )}
+            </Collapse>
           </>
         )}
       </DialogContent>

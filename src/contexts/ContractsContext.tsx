@@ -175,7 +175,12 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
 
   const drip = useCallback(
     async (password: string, recipient: AztecAddress) => {
+      if (!pop) {
+        throw new Error('ProofOfPassword contract not initialized');
+      }
+
       const { instance: sponsoredFPCInstance } = await getSponsoredFPCData();
+
       const sentTx = await pop.methods.check_password_and_mint(password, recipient).send({
         from: AztecAddress.ZERO,
         fee: {
@@ -184,7 +189,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
       });
       return sentTx;
     },
-    [wallet],
+    [wallet, pop],
   );
 
   const getExchangeRate = useCallback(async () => {
@@ -295,7 +300,9 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
 
         setIsLoadingContracts(false);
       } else if (flowType === 'drip') {
-        // Register only ProofOfPassword (GregoCoin and GregoCoinPremium already registered during swap flow)
+        // Register ProofOfPassword and SponsoredFPC for drip flow
+        setIsLoadingContracts(true);
+
         const popAddress = AztecAddress.fromString(activeNetwork.contracts.pop);
         const { ProofOfPasswordContract, ProofOfPasswordContractArtifact } = await import(
           '../../contracts/target/ProofOfPassword.ts'
@@ -309,7 +316,10 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
           { name: 'registerContract', args: [sponsoredFPCInstance, SponsoredFPCContractArtifact, undefined] },
         ]);
 
-        setPop(await ProofOfPasswordContract.at(popAddress, wallet));
+        // After registration, instantiate the ProofOfPassword contract
+        const popContract = await ProofOfPasswordContract.at(popAddress, wallet);
+        setPop(popContract);
+
         setIsLoadingContracts(false);
       }
     },
