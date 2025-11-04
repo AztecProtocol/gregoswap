@@ -36,8 +36,20 @@ interface OnboardingModalProps {
 }
 
 export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps) {
-  const { status, error, currentStep, totalSteps, resetOnboarding, flowType, currentFlow, closeModal, completeDripOnboarding, switchedToDrip, isSwapPending, isDripPending } =
-    useOnboarding();
+  const {
+    status,
+    error,
+    currentStep,
+    totalSteps,
+    resetOnboarding,
+    flowType,
+    currentFlow,
+    closeModal,
+    completeDripOnboarding,
+    switchedToDrip,
+    isSwapPending,
+    isDripPending,
+  } = useOnboarding();
   const { connectWallet } = useWallet();
   const [accounts, setAccounts] = useState<Aliased<AztecAddress>[]>([]);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
@@ -156,7 +168,9 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
         backgroundImage: 'none',
       }}
     >
-      <DialogTitle sx={{ fontWeight: 600, pb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <DialogTitle
+        sx={{ fontWeight: 600, pb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+      >
         Setting Up Your Wallet
         <IconButton
           onClick={closeModal}
@@ -493,9 +507,17 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
             {/* Drip flow: show info message during registration */}
             {status === 'registering_drip' && flowType === 'drip' && switchedToDrip && (
               <Box sx={{ mt: 3 }}>
-                <Alert severity="info">
-                  <Typography variant="body2">
-                    We noticed you don't have any tokens yet. Let's get you started with some free GregoCoin!
+                <Alert severity="info" sx={{ '& .MuiAlert-message': { width: '100%' } }}>
+                  <Typography variant="body2" sx={{ mb: 1.5 }}>
+                    Uh oh! You have no GregoCoin balance!
+                  </Typography>
+                  <Typography variant="body2" component="div">
+                    <strong>Next steps:</strong>
+                    <ol style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
+                      <li>Approve contract registration in your wallet</li>
+                      <li>Provide a password to claim your tokens</li>
+                      <li>Authorize the transaction</li>
+                    </ol>
                   </Typography>
                 </Alert>
               </Box>
@@ -504,7 +526,23 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
             {/* Drip flow: show password input - only when awaiting password, not during registration */}
             <Collapse in={status === 'awaiting_drip' && flowType === 'drip'} timeout={400}>
               {status === 'awaiting_drip' && flowType === 'drip' && (
-                <Box sx={{ mt: 3 }}>
+                <Box
+                  sx={{
+                    mt: 3,
+                    '@keyframes pulseGlow': {
+                      '0%, 100%': {
+                        boxShadow: '0 0 0 0 rgba(212, 255, 40, 0.4)',
+                      },
+                      '50%': {
+                        boxShadow: '0 0 20px 5px rgba(212, 255, 40, 0.2)',
+                      },
+                    },
+                    animation: 'pulseGlow 2s ease-in-out 3',
+                    borderRadius: 1,
+                    p: 2,
+                    backgroundColor: 'rgba(212, 255, 40, 0.03)',
+                  }}
+                >
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                     Enter the password to claim your free GregoCoin tokens:
                   </Typography>
@@ -514,10 +552,10 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
                     type="password"
                     label="Password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={e => setPassword(e.target.value)}
                     autoFocus
                     sx={{ mb: 2 }}
-                    onKeyDown={(e) => {
+                    onKeyDown={e => {
                       if (e.key === 'Enter' && password) {
                         handlePasswordSubmit();
                       }

@@ -47,6 +47,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
   const embeddedWalletRef = useRef<Wallet | null>(null);
   const embeddedAddressRef = useRef<AztecAddress | null>(null);
   const previousNodeUrlRef = useRef<string | null>(null);
+  const hasConnectedExternalWalletRef = useRef(false); // Track if user explicitly connected external wallet
 
   useEffect(() => {
     const nodeUrl = activeNetwork?.nodeUrl;
@@ -61,6 +62,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
     }
 
     previousNodeUrlRef.current = nodeUrl;
+    hasConnectedExternalWalletRef.current = false; // Reset when changing networks
 
     async function initializeWallet() {
       try {
@@ -78,9 +80,12 @@ export function WalletProvider({ children }: WalletProviderProps) {
         embeddedWalletRef.current = embeddedWallet;
         embeddedAddressRef.current = defaultAccountAddress;
 
-        setIsUsingEmbeddedWallet(true);
-        setCurrentAddress(defaultAccountAddress);
-        setWallet(embeddedWallet);
+        // Only set embedded wallet as active if user hasn't connected an external wallet
+        if (!hasConnectedExternalWalletRef.current) {
+          setIsUsingEmbeddedWallet(true);
+          setCurrentAddress(defaultAccountAddress);
+          setWallet(embeddedWallet);
+        }
         setIsLoading(false);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
@@ -108,6 +113,9 @@ export function WalletProvider({ children }: WalletProviderProps) {
     const appId = 'gregoswap';
     const extensionWallet = ExtensionWallet.create(chainInfo, appId);
 
+    // Mark that user explicitly connected an external wallet
+    hasConnectedExternalWalletRef.current = true;
+
     // Replace the current wallet with extension wallet
     setWallet(extensionWallet);
     setCurrentAddress(null);
@@ -118,6 +126,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
   const disconnectWallet = useCallback(() => {
     // Restore embedded wallet and address
     if (embeddedWalletRef.current) {
+      hasConnectedExternalWalletRef.current = false; // Reset flag when disconnecting
       setWallet(embeddedWalletRef.current);
       setCurrentAddress(embeddedAddressRef.current);
       setIsUsingEmbeddedWallet(true);
