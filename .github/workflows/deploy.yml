@@ -48,13 +48,14 @@ jobs:
       - name: Compile contracts
         run: yarn compile:contracts
 
-      - name: Build website
-        run: yarn build
-
       - name: Deploy contracts to devnet
         run: yarn deploy:devnet
         env:
           PASSWORD: ${{ secrets.PASSWORD }}
+          PROVER_ENABLED: false
+
+      - name: Build website
+        run: yarn build
 
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
