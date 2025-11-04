@@ -119,8 +119,7 @@ function setStoredOnboardingStatus(address: AztecAddress | null, completed: bool
 export function OnboardingProvider({ children }: OnboardingProviderProps) {
   // Pull from other contexts needed for flow orchestration
   const { currentAddress, isUsingEmbeddedWallet } = useWallet();
-  const { simulateOnboardingQueries, checkGregoCoinBalance, isLoadingContracts, registerContractsForFlow } =
-    useContracts();
+  const { simulateOnboardingQueries, isLoadingContracts, registerContractsForFlow } = useContracts();
 
   // Internal state
   const [status, setStatusState] = useState<OnboardingStatus>('not_started');
@@ -137,7 +136,6 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
   // Refs to prevent duplicate operations
   const hasRegisteredBaseContractsRef = useRef(false);
   const hasSimulatedRef = useRef(false);
-  const hasCheckedDripBalanceRef = useRef(false); // Separate flag for drip balance check
 
   // Completed flow tracking - persists after status becomes 'completed' to trigger execution
   const [completedFlowType, setCompletedFlowType] = useState<OnboardingFlowType | null>(null);
@@ -239,49 +237,11 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
               setSwitchedToDrip(true);
               setFlowType('drip');
               setStatus('registering_drip');
-              // Register ProofOfPassword contract - the drip flow orchestration will advance to awaiting_drip
               await registerContractsForFlow('drip');
-            } else {
-              // User has tokens - complete swap onboarding
-              completeOnboarding();
-            }
-          }
-        }
-
-        // DRIP FLOW: Simplified onboarding for users who clicked "Don't have GregoCoin?"
-        if (flowType === 'drip') {
-          // Step 1: After wallet connection, register GregoCoin and ProofOfPassword contracts
-          if (
-            status === 'connecting_wallet' &&
-            currentAddress &&
-            !isUsingEmbeddedWallet &&
-            !hasRegisteredBaseContractsRef.current
-          ) {
-            hasRegisteredBaseContractsRef.current = true;
-            setStatus('registering_drip');
-            // Register only GregoCoin (for balance check) and ProofOfPassword (for drip)
-            await registerContractsForFlow('gregocoin-only'); // Only GregoCoin needed for balance check
-            await registerContractsForFlow('drip'); // ProofOfPassword for claiming
-          }
-
-          // Step 2: After drip contracts are registered, check balance before showing password
-          if (
-            status === 'registering_drip' &&
-            !isLoadingContracts &&
-            currentAddress &&
-            !hasCheckedDripBalanceRef.current
-          ) {
-            hasCheckedDripBalanceRef.current = true;
-            // Quick balance check to verify user actually has 0 GregoCoin (only check GC balance, not all queries)
-            const gcBalance = await checkGregoCoinBalance();
-
-            const hasNoTokens = gcBalance === 0n;
-
-            if (hasNoTokens) {
-              // User confirmed to have no tokens - show password prompt
+              // After drip contracts are registered, transition to awaiting password
               setStatus('awaiting_drip');
             } else {
-              // User actually has tokens - switch to completed (they don't need drip)
+              // User has tokens - complete swap onboarding
               completeOnboarding();
             }
           }
@@ -301,7 +261,6 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     setStatus,
     completeOnboarding,
     simulateOnboardingQueries,
-    checkGregoCoinBalance,
     registerContractsForFlow,
   ]);
 
@@ -313,7 +272,6 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     // Reset refs to allow new onboarding session
     hasRegisteredBaseContractsRef.current = false;
     hasSimulatedRef.current = false;
-    hasCheckedDripBalanceRef.current = false;
 
     setFlowType(newFlowType);
     setOriginalFlowType(newFlowType); // Track what user originally started with
@@ -364,7 +322,6 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     // Reset refs to allow new onboarding session
     hasRegisteredBaseContractsRef.current = false;
     hasSimulatedRef.current = false;
-    hasCheckedDripBalanceRef.current = false;
 
     setStatusState('not_started');
     setError(null);

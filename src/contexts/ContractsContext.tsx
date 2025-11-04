@@ -182,13 +182,12 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
 
       const { instance: sponsoredFPCInstance } = await getSponsoredFPCData();
 
-      const sentTx = await pop.methods.check_password_and_mint(password, recipient).send({
+      return pop.methods.check_password_and_mint(password, recipient).send({
         from: AztecAddress.ZERO,
         fee: {
           paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPCInstance.address),
         },
       });
-      return sentTx;
     },
     [wallet, pop],
   );
@@ -211,7 +210,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
       }
 
       const authwitNonce = Fr.random();
-      const sentTx = await amm.methods
+      return amm.methods
         .swap_tokens_for_exact_tokens(
           gregoCoin.address,
           gregoCoinPremium.address,
@@ -220,8 +219,6 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
           authwitNonce,
         )
         .send({ from: currentAddress });
-
-      return sentTx;
     },
     [wallet, amm, currentAddress, gregoCoin, gregoCoinPremium],
   );
@@ -271,7 +268,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
   }, [wallet, gregoCoin, currentAddress]);
 
   const registerContractsForFlow = useCallback(
-    async (flowType: 'swap' | 'drip' | 'gregocoin-only') => {
+    async (flowType: 'swap' | 'drip') => {
       if (!wallet || !node) {
         throw new Error('Wallet not initialized');
       }
@@ -310,29 +307,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         setAmm(ammContract);
 
         setIsLoadingContracts(false);
-      } else if (flowType === 'gregocoin-only') {
-        // Register only GregoCoin for drip flow balance check
-        setIsLoadingContracts(true);
-
-        const { TokenContractArtifact } = await import('@aztec/noir-contracts.js/Token');
-
-        const gregoCoinInstance = await getContractInstanceFromInstantiationParams(TokenContractArtifact, {
-          salt: contractSalt,
-          deployer: deployerAddress,
-          constructorArgs: [deployerAddress, 'GregoCoin', 'GRG', 18],
-        });
-
-        await wallet.batch([
-          { name: 'registerContract', args: [gregoCoinInstance, TokenContractArtifact, undefined] },
-        ]);
-
-        // After registration, instantiate the GregoCoin contract
-        const { TokenContract } = await import('@aztec/noir-contracts.js/Token');
-        const gregoCoinContract = await TokenContract.at(gregoCoinAddress, wallet);
-        setGregoCoin(gregoCoinContract);
-
-        setIsLoadingContracts(false);
-      } else if (flowType === 'drip') {
+      } else {
         // Register ProofOfPassword and SponsoredFPC for drip flow
         setIsLoadingContracts(true);
 

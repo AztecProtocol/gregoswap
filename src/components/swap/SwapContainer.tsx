@@ -335,8 +335,10 @@ export function SwapContainer() {
           onClick={() => {
             // Check if user needs to onboard first (using embedded wallet or not yet started)
             if (isUsingEmbeddedWallet || onboardingStatus === 'not_started') {
-              startOnboardingFlow('drip');
+              // Start swap flow - it will automatically switch to drip if user has no tokens
+              startOnboardingFlow('swap', false);
             } else if (onboardingStatus === 'completed') {
+              // Already onboarded, show drip modal directly
               setIsDripModalOpen(true);
             }
           }}
