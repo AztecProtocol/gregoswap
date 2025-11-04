@@ -1,0 +1,83 @@
+name: Build, Deploy Contracts & Publish to Vercel
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  PASSWORD: ${{ secrets.PASSWORD }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Install Aztec CLI
+        run: |
+          curl -s https://install.aztec.network > tmp.sh
+          bash tmp.sh <<< yes "yes"
+
+      - name: Update path
+        run: echo "/home/runner/.aztec/bin" >> $GITHUB_PATH
+
+      - name: Set Aztec version
+        run: |
+          aztec-up ${{ env.VERSION }}
+          docker pull aztecprotocol/aztec:${{ env.VERSION }}
+          docker tag aztecprotocol/aztec:${{ env.VERSION }} 
+          aztecprotocol/aztec:latest
+
+      - name: Copy token contract dependencies
+        run: yarn copy:dependencies
+
+      - name: Compile contracts
+        run: yarn compile:contracts
+
+      - name: Build website
+        run: yarn build
+
+      - name: Deploy contracts to devnet
+        run: yarn deploy:devnet
+        env:
+          PASSWORD: ${{ secrets.PASSWORD }}
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel Environment Information
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy to Vercel
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+        id: deploy
+
+      - name: Comment deployment URL on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🚀 Deployed to Vercel!\n\nContracts deployed to devnet and website published.'
+            })

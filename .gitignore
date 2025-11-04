@@ -36,3 +36,4 @@ contracts/target
 # Network configs (local is developer-specific, devnet should be committed)
 src/config/networks/local.json
 contracts/codegenCache.json
+.vercel
