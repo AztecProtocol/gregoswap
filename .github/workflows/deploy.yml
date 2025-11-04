@@ -58,7 +58,7 @@ jobs:
         run: |
           mkdir -p .vercel/output
           mv dist .vercel/output
-          vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz
+          vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes
         id: deploy
 
       - name: Comment deployment URL on PR
