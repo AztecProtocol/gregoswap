@@ -31,13 +31,9 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
 
   // Initialize networks on mount
   useEffect(() => {
-    let cancelled = false;
-
     function loadNetworks() {
       try {
         const networks = initializeNetworks();
-
-        if (cancelled) return;
 
         setAvailableNetworks(networks);
 
@@ -61,8 +57,6 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
           // Silently fail - localStorage not available
         }
 
-        if (cancelled) return;
-
         setActiveNetworkId(initialNetwork);
 
         if (networks.length === 0) {
@@ -73,17 +67,11 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
 
         setIsLoading(false);
       } catch (err) {
-        if (cancelled) return;
-
         throw err;
       }
     }
 
     loadNetworks();
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   const switchNetwork = useCallback(

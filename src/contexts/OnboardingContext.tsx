@@ -139,8 +139,6 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
 
   // Completed flow tracking - persists after status becomes 'completed' to trigger execution
   const [completedFlowType, setCompletedFlowType] = useState<OnboardingFlowType | null>(null);
-  // Original flow type - tracks what user initially started with (for modal display)
-  const [originalFlowType, setOriginalFlowType] = useState<OnboardingFlowType | null>(null);
   // Track if user initiated a swap transaction (clicked Swap button with amount entered)
   const [swapInitiated, setSwapInitiated] = useState(false);
 
@@ -274,7 +272,6 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     hasSimulatedRef.current = false;
 
     setFlowType(newFlowType);
-    setOriginalFlowType(newFlowType); // Track what user originally started with
     setCompletedFlowType(null);
     setSwapInitiated(initiatedSwap); // Track if this is for a swap transaction
     setStatusState('connecting_wallet');
@@ -326,7 +323,6 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     setStatusState('not_started');
     setError(null);
     setFlowType(null);
-    setOriginalFlowType(null);
     setCompletedFlowType(null);
     setSwapInitiated(false);
     setOnboardingResult(null);

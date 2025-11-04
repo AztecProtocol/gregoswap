@@ -46,7 +46,6 @@ interface ContractsContextType {
   swap: (amountOut: number, amountInMax: number) => Promise<SentTx>;
   fetchBalances: () => Promise<[bigint, bigint]>;
   simulateOnboardingQueries: () => Promise<[number, bigint, bigint]>;
-  checkGregoCoinBalance: () => Promise<bigint>;
   registerContractsForFlow: (flowType: 'swap' | 'drip' | 'gregocoin-only') => Promise<void>;
   drip: (password: string, recipient: AztecAddress) => Promise<SentTx>;
 }
@@ -257,16 +256,6 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     return [exchangeRate, gcBalance, gcpBalance] as [number, bigint, bigint];
   }, [wallet, gregoCoin, gregoCoinPremium, amm, currentAddress]);
 
-  const checkGregoCoinBalance = useCallback(async () => {
-    if (!wallet || !gregoCoin || !currentAddress) {
-      throw new Error('GregoCoin contract not initialized');
-    }
-
-    // Simple balance check for drip flow - only check GregoCoin balance
-    const gcBalance = await gregoCoin.methods.balance_of_private(currentAddress).simulate({ from: currentAddress });
-    return gcBalance;
-  }, [wallet, gregoCoin, currentAddress]);
-
   const registerContractsForFlow = useCallback(
     async (flowType: 'swap' | 'drip') => {
       if (!wallet || !node) {
@@ -340,7 +329,6 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     swap,
     fetchBalances,
     simulateOnboardingQueries,
-    checkGregoCoinBalance,
     registerContractsForFlow,
     drip,
   };
