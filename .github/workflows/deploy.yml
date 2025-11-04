@@ -48,9 +48,6 @@ jobs:
       - name: Compile contracts
         run: yarn compile:contracts
 
-      - name: Build website
-        run: yarn build
-
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
@@ -59,9 +56,7 @@ jobs:
 
       - name: Deploy to Vercel
         run: |
-          mkdir -p .vercel/output
-          mv dist .vercel/output
-          vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes
+          vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes
         id: deploy
 
       - name: Comment deployment URL on PR
