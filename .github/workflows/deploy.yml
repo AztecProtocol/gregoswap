@@ -41,9 +41,9 @@ jobs:
 
       - name: Set Aztec version
         run: |
-          aztec-up ${{ env.VERSION }}
-          docker pull aztecprotocol/aztec:${{ env.VERSION }}
-          docker tag aztecprotocol/aztec:${{ env.VERSION }} 
+          aztec-up ${{ vars.VERSION }}
+          docker pull aztecprotocol/aztec:${{ vars.VERSION }}
+          docker tag aztecprotocol/aztec:${{ vars.VERSION }} 
           aztecprotocol/aztec:latest
 
       - name: Copy token contract dependencies
