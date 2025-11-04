@@ -43,8 +43,7 @@ jobs:
         run: |
           aztec-up ${{ vars.VERSION }}
           docker pull aztecprotocol/aztec:${{ vars.VERSION }}
-          docker tag aztecprotocol/aztec:${{ vars.VERSION }} 
-          aztecprotocol/aztec:latest
+          docker tag aztecprotocol/aztec:${{ vars.VERSION }} aztecprotocol/aztec:latest
 
       - name: Copy token contract dependencies
         run: yarn copy:dependencies
