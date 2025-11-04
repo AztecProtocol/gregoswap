@@ -19,7 +19,16 @@ import { waitForTxWithPhases } from '../../utils/txUtils';
 export function SwapContainer() {
   const { isLoadingContracts, drip } = useContracts();
   const { isUsingEmbeddedWallet, currentAddress } = useWallet();
-  const { status: onboardingStatus, isSwapPending, isDripPending, dripPassword, clearSwapPending, clearDripPassword, startOnboardingFlow } = useOnboarding();
+  const {
+    status: onboardingStatus,
+    isSwapPending,
+    isDripPending,
+    dripPassword,
+    clearSwapPending,
+    clearDripPassword,
+    completeDripExecution,
+    startOnboardingFlow,
+  } = useOnboarding();
 
   const swapErrorRef = useRef<HTMLDivElement | null>(null);
 
@@ -130,8 +139,8 @@ export function SwapContainer() {
   const handleSwapClick = () => {
     // Check if user needs onboarding
     if (isUsingEmbeddedWallet || onboardingStatus === 'not_started') {
-      // Start onboarding flow with swap type
-      startOnboardingFlow('swap');
+      // Start onboarding flow with swap type - user initiated a swap transaction
+      startOnboardingFlow('swap', true);
     } else if (onboardingStatus === 'completed') {
       // Already onboarded, execute swap directly
       executeSwap();
@@ -149,7 +158,6 @@ export function SwapContainer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onboardingStatus, isSwapPending]);
 
-
   // Clear swap pending flag only after swap actually completes
   // (not just when onboarding completes but before swap starts)
   useEffect(() => {
@@ -165,9 +173,15 @@ export function SwapContainer() {
     async function executeDrip() {
       if (!isDripPending || !dripPassword || !currentAddress || isDripping) return;
 
+      console.log('Starting drip execution');
       setIsDripping(true);
       setDripPhase('sending');
       setDripError(null);
+
+      // Complete onboarding immediately to show transition animation
+      // Transaction will continue in background
+      completeDripExecution();
+      clearDripPassword();
 
       try {
         const sentTx = await drip(dripPassword, currentAddress);
@@ -175,7 +189,6 @@ export function SwapContainer() {
 
         // Success - refresh balances and clear state
         refetchBalances();
-        clearDripPassword();
         setIsDripping(false);
         setDripPhase(null);
       } catch (error) {
@@ -201,13 +214,12 @@ export function SwapContainer() {
         setDripError(errorMessage);
         setDripPhase(null);
         setIsDripping(false);
-        clearDripPassword();
       }
     }
 
     executeDrip();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDripPending, dripPassword, currentAddress]);
+  }, [isDripPending, dripPassword, currentAddress, completeDripExecution]);
 
   // Scroll to error when it appears
   useEffect(() => {
@@ -242,7 +254,11 @@ export function SwapContainer() {
   const toPlaceholder = isRateUnavailable && fromAmount !== '' ? '...' : '0.0';
 
   // Calculate if FROM amount exceeds balance
-  const fromHasError = showBalance && balances.gregoCoin !== null && fromAmount !== '' && parseFloat(fromAmount) > Number(balances.gregoCoin);
+  const fromHasError =
+    showBalance &&
+    balances.gregoCoin !== null &&
+    fromAmount !== '' &&
+    parseFloat(fromAmount) > Number(balances.gregoCoin);
 
   return (
     <Paper
@@ -355,17 +371,17 @@ export function SwapContainer() {
       )}
 
       {/* Error Display */}
-      <SwapErrorAlert error={swapError || dripError} onDismiss={() => {
-        if (dripError) setDripError(null);
-        if (swapError) dismissError();
-      }} errorRef={swapErrorRef} />
+      <SwapErrorAlert
+        error={swapError || dripError}
+        onDismiss={() => {
+          if (dripError) setDripError(null);
+          if (swapError) dismissError();
+        }}
+        errorRef={swapErrorRef}
+      />
 
       {/* Drip Modal */}
-      <DripModal
-        open={isDripModalOpen}
-        onClose={() => setIsDripModalOpen(false)}
-        onSuccess={() => refetchBalances()}
-      />
+      <DripModal open={isDripModalOpen} onClose={() => setIsDripModalOpen(false)} onSuccess={() => refetchBalances()} />
     </Paper>
   );
 }

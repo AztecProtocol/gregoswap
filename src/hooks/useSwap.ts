@@ -37,7 +37,7 @@ const GREGOCOIN_USD_PRICE = 10;
 export function useSwap({ fromAmount, toAmount, isDripping = false, fromTokenBalance = null }: UseSwapProps): UseSwapReturn {
   // Pull from contexts
   const { swap, isLoadingContracts, getExchangeRate } = useContracts();
-  const { status: onboardingStatus, onboardingResult, isSwapPending } = useOnboarding();
+  const { status: onboardingStatus, onboardingResult, isSwapPending, isDripPending } = useOnboarding();
 
   // State for swap
   const [isSwapping, setIsSwapping] = useState(false);
@@ -85,7 +85,7 @@ export function useSwap({ fromAmount, toAmount, isDripping = false, fromTokenBal
   // Fetch exchange rate with auto-refresh every 10 seconds
   useEffect(() => {
     async function fetchExchangeRate() {
-      const isBusy = isLoadingContracts || isSwapping || isSwapPending || isDripping;
+      const isBusy = isLoadingContracts || isSwapping || isSwapPending || isDripping || isDripPending;
       const isOnboardingInProgress = onboardingStatus !== 'completed' && onboardingStatus !== 'not_started';
 
       if (isBusy || isOnboardingInProgress) {
@@ -126,6 +126,7 @@ export function useSwap({ fromAmount, toAmount, isDripping = false, fromTokenBal
     isLoadingContracts,
     isSwapping,
     isDripping,
+    isDripPending,
     getExchangeRate,
     onboardingStatus,
     isSwapPending,

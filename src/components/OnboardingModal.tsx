@@ -36,7 +36,7 @@ interface OnboardingModalProps {
 }
 
 export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps) {
-  const { status, error, currentStep, totalSteps, resetOnboarding, flowType, currentFlow, closeModal, completeDripOnboarding, switchedToDrip } =
+  const { status, error, currentStep, totalSteps, resetOnboarding, flowType, currentFlow, closeModal, completeDripOnboarding, switchedToDrip, isSwapPending, isDripPending } =
     useOnboarding();
   const { connectWallet } = useWallet();
   const [accounts, setAccounts] = useState<Aliased<AztecAddress>[]>([]);
@@ -86,7 +86,10 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
 
   // Handle completion animation and auto-close
   useEffect(() => {
-    if (status === 'completed') {
+    // Only show transition animation if there's a pending action (swap or drip)
+    const hasPendingAction = isSwapPending || isDripPending;
+
+    if (status === 'completed' && hasPendingAction) {
       // Show completion check immediately
       setShowCompletionCheck(true);
 
@@ -104,12 +107,15 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
         clearTimeout(iconTimer);
         clearTimeout(closeTimer);
       };
+    } else if (status === 'completed' && !hasPendingAction) {
+      // No pending action - close modal immediately (wallet connection only)
+      closeModal();
     } else {
       // Reset animation state when not showing completion
       setShowCompletionCheck(false);
       setShowSwapIcon(false);
     }
-  }, [status, closeModal]);
+  }, [status, closeModal, isSwapPending, isDripPending]);
 
   const getStepStatus = (stepIndex: number): 'completed' | 'active' | 'pending' | 'error' => {
     // If there's an error, mark the current step as error

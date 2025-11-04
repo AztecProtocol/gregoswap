@@ -12,6 +12,7 @@ export type OnboardingStatus =
   | 'simulating_queries' // Batched simulation for approval (swap flow)
   | 'awaiting_drip' // Waiting for user to enter password (drip flow)
   | 'registering_drip' // Registering ProofOfPassword contract after password entry
+  | 'executing_drip' // Executing drip transaction (drip flow)
   | 'completed' // Onboarded, ready for seamless ops
   | 'error'; // Something failed
 
@@ -35,7 +36,7 @@ export const FLOW_CONFIGS: Record<OnboardingFlowType, FlowConfig> = {
       { label: 'Register Contracts', description: 'Setting up contracts' },
       { label: 'Approve Queries', description: 'Review and approve batched queries in your wallet' },
     ],
-    totalSteps: 3,
+    totalSteps: 4,
     requiresAction: false,
   },
   drip: {
@@ -43,9 +44,9 @@ export const FLOW_CONFIGS: Record<OnboardingFlowType, FlowConfig> = {
     steps: [
       { label: 'Connect Wallet', description: 'Select your account from the wallet extension' },
       { label: 'Setup Contracts', description: 'Setting up contracts and checking balances' },
-      { label: 'Claim Tokens', description: 'Enter password to receive free GregoCoin' },
+      { label: 'Claim Tokens', description: 'Claiming your free GregoCoin tokens' },
     ],
-    totalSteps: 3,
+    totalSteps: 4,
     requiresAction: true,
   },
 };
@@ -82,10 +83,11 @@ interface OnboardingContextType extends OnboardingState {
   dripPassword: string | null; // Password from drip onboarding
 
   // Actions
-  startOnboardingFlow: (flowType: OnboardingFlowType) => void;
+  startOnboardingFlow: (flowType: OnboardingFlowType, initiatedSwap?: boolean) => void;
   closeModal: () => void;
   clearSwapPending: () => void;
   completeDripOnboarding: (password: string) => void;
+  completeDripExecution: () => void;
   clearDripPassword: () => void;
   resetOnboarding: () => void;
 }
@@ -117,7 +119,8 @@ function setStoredOnboardingStatus(address: AztecAddress | null, completed: bool
 export function OnboardingProvider({ children }: OnboardingProviderProps) {
   // Pull from other contexts needed for flow orchestration
   const { currentAddress, isUsingEmbeddedWallet } = useWallet();
-  const { simulateOnboardingQueries, isLoadingContracts, registerContractsForFlow } = useContracts();
+  const { simulateOnboardingQueries, checkGregoCoinBalance, isLoadingContracts, registerContractsForFlow } =
+    useContracts();
 
   // Internal state
   const [status, setStatusState] = useState<OnboardingStatus>('not_started');
@@ -134,10 +137,19 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
   // Refs to prevent duplicate operations
   const hasRegisteredBaseContractsRef = useRef(false);
   const hasSimulatedRef = useRef(false);
+  const hasCheckedDripBalanceRef = useRef(false); // Separate flag for drip balance check
+
+  // Completed flow tracking - persists after status becomes 'completed' to trigger execution
+  const [completedFlowType, setCompletedFlowType] = useState<OnboardingFlowType | null>(null);
+  // Original flow type - tracks what user initially started with (for modal display)
+  const [originalFlowType, setOriginalFlowType] = useState<OnboardingFlowType | null>(null);
+  // Track if user initiated a swap transaction (clicked Swap button with amount entered)
+  const [swapInitiated, setSwapInitiated] = useState(false);
 
   // Computed values
   const currentFlow = flowType ? FLOW_CONFIGS[flowType] : null;
-  const isSwapPending = flowType === 'swap' && status !== 'completed';
+  // isSwapPending: true after swap onboarding completes AND user initiated a swap
+  const isSwapPending = completedFlowType === 'swap' && swapInitiated;
   const isDripPending = flowType === 'drip' && dripPassword !== null;
 
   // Calculate current step based on status
@@ -156,9 +168,10 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
       case 'registering_drip':
         return 2; // Drip flow step 2 - registering drip-specific contracts
       case 'awaiting_drip':
-        return 3; // Drip flow step 3 - waiting for password
+      case 'executing_drip':
+        return 3; // Drip flow step 3 - waiting for password or executing
       case 'completed':
-        return 3; // Final step is 3 for both flows
+        return 4; // Final step is 4 for both flows
       default:
         return 0;
     }
@@ -177,11 +190,13 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
   }, []);
 
   const completeOnboarding = useCallback(() => {
+    // Track which flow completed to trigger post-onboarding actions (swap execution)
+    setCompletedFlowType(flowType);
     setStatusState('completed');
     setError(null);
     // Store completion in localStorage
     setStoredOnboardingStatus(storedAddress, true);
-  }, [storedAddress]);
+  }, [storedAddress, flowType]);
 
   // Onboarding orchestration - advance through steps
   useEffect(() => {
@@ -189,54 +204,87 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
       if (!flowType) return;
 
       try {
-        // Step 1: After wallet connection, register all base contracts
-        // (GregoCoin, GregoCoinPremium, AMM) regardless of initial flow type
-        if (
-          status === 'connecting_wallet' &&
-          currentAddress &&
-          !isUsingEmbeddedWallet &&
-          !hasRegisteredBaseContractsRef.current
-        ) {
-          hasRegisteredBaseContractsRef.current = true;
-          setStatus('registering_contracts');
-          // Always register swap contracts first (they're needed for both flows)
-          await registerContractsForFlow('swap');
-        }
+        // SWAP FLOW: Full onboarding with simulation to detect if user needs drip
+        if (flowType === 'swap') {
+          // Step 1: After wallet connection, register swap contracts (GregoCoin, GregoCoinPremium, AMM)
+          if (
+            status === 'connecting_wallet' &&
+            currentAddress &&
+            !isUsingEmbeddedWallet &&
+            !hasRegisteredBaseContractsRef.current
+          ) {
+            hasRegisteredBaseContractsRef.current = true;
+            setStatus('registering_contracts');
+            await registerContractsForFlow('swap');
+          }
 
-        // Step 2: After contracts are registered, simulate to determine the path
-        if (status === 'registering_contracts' && !isLoadingContracts && currentAddress && !hasSimulatedRef.current) {
-          hasSimulatedRef.current = true;
-          setStatus('simulating_queries');
-          const [exchangeRate, gcBalance, gcpBalance] = await simulateOnboardingQueries();
-          setOnboardingResult({
-            exchangeRate,
-            balances: {
-              gregoCoin: gcBalance,
-              gregoCoinPremium: gcpBalance,
-            },
-          });
+          // Step 2: After contracts are registered, simulate to determine the path
+          if (status === 'registering_contracts' && !isLoadingContracts && currentAddress && !hasSimulatedRef.current) {
+            hasSimulatedRef.current = true;
+            setStatus('simulating_queries');
+            const [exchangeRate, gcBalance, gcpBalance] = await simulateOnboardingQueries();
+            setOnboardingResult({
+              exchangeRate,
+              balances: {
+                gregoCoin: gcBalance,
+                gregoCoinPremium: gcpBalance,
+              },
+            });
 
-          // Decide flow based on balances
-          const hasNoTokens = gcBalance === 0n && gcpBalance === 0n;
+            // Decide flow based on balances
+            const hasNoTokens = gcBalance === 0n;
 
-          if (hasNoTokens) {
-            // User has no tokens - switch to drip flow and register ProofOfPassword contracts
-            setSwitchedToDrip(true);
-            setFlowType('drip');
-            setStatus('registering_drip');
-            // Register ProofOfPassword contract before showing password prompt
-            await registerContractsForFlow('drip');
-          } else {
-            // User has tokens - complete swap onboarding
-            setFlowType('swap');
-            completeOnboarding();
+            if (hasNoTokens) {
+              // User has no tokens - switch to drip flow and register ProofOfPassword contracts
+              setSwitchedToDrip(true);
+              setFlowType('drip');
+              setStatus('registering_drip');
+              // Register ProofOfPassword contract - the drip flow orchestration will advance to awaiting_drip
+              await registerContractsForFlow('drip');
+            } else {
+              // User has tokens - complete swap onboarding
+              completeOnboarding();
+            }
           }
         }
 
-        // Step 3: After drip contracts are registered, show password prompt
-        if (status === 'registering_drip' && !isLoadingContracts && currentAddress) {
-          // Registration is complete, now wait for user to enter password
-          setStatus('awaiting_drip');
+        // DRIP FLOW: Simplified onboarding for users who clicked "Don't have GregoCoin?"
+        if (flowType === 'drip') {
+          // Step 1: After wallet connection, register GregoCoin and ProofOfPassword contracts
+          if (
+            status === 'connecting_wallet' &&
+            currentAddress &&
+            !isUsingEmbeddedWallet &&
+            !hasRegisteredBaseContractsRef.current
+          ) {
+            hasRegisteredBaseContractsRef.current = true;
+            setStatus('registering_drip');
+            // Register only GregoCoin (for balance check) and ProofOfPassword (for drip)
+            await registerContractsForFlow('gregocoin-only'); // Only GregoCoin needed for balance check
+            await registerContractsForFlow('drip'); // ProofOfPassword for claiming
+          }
+
+          // Step 2: After drip contracts are registered, check balance before showing password
+          if (
+            status === 'registering_drip' &&
+            !isLoadingContracts &&
+            currentAddress &&
+            !hasCheckedDripBalanceRef.current
+          ) {
+            hasCheckedDripBalanceRef.current = true;
+            // Quick balance check to verify user actually has 0 GregoCoin (only check GC balance, not all queries)
+            const gcBalance = await checkGregoCoinBalance();
+
+            const hasNoTokens = gcBalance === 0n;
+
+            if (hasNoTokens) {
+              // User confirmed to have no tokens - show password prompt
+              setStatus('awaiting_drip');
+            } else {
+              // User actually has tokens - switch to completed (they don't need drip)
+              completeOnboarding();
+            }
+          }
         }
       } catch (error) {
         setStatus('error', error instanceof Error ? error.message : 'Onboarding failed');
@@ -253,23 +301,24 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     setStatus,
     completeOnboarding,
     simulateOnboardingQueries,
+    checkGregoCoinBalance,
     registerContractsForFlow,
   ]);
 
-  // Auto-close modal when completed for both swap and drip flows (after showing transition)
-  useEffect(() => {
-    if (status === 'completed') {
-      setIsOnboardingModalOpen(false);
-    }
-  }, [status]);
+  // Note: Modal auto-closes itself via OnboardingModal's completion animation effect
+  // No need to close it here - let the modal's animation complete first
 
   // Public API
-  const startOnboardingFlow = useCallback((newFlowType: OnboardingFlowType) => {
+  const startOnboardingFlow = useCallback((newFlowType: OnboardingFlowType, initiatedSwap: boolean = false) => {
     // Reset refs to allow new onboarding session
     hasRegisteredBaseContractsRef.current = false;
     hasSimulatedRef.current = false;
+    hasCheckedDripBalanceRef.current = false;
 
     setFlowType(newFlowType);
+    setOriginalFlowType(newFlowType); // Track what user originally started with
+    setCompletedFlowType(null);
+    setSwapInitiated(initiatedSwap); // Track if this is for a swap transaction
     setStatusState('connecting_wallet');
     setError(null);
     setSwitchedToDrip(false);
@@ -278,37 +327,51 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
 
   const closeModal = useCallback(() => {
     setIsOnboardingModalOpen(false);
+    // Clear flow state when modal closes
+    setFlowType(null);
+    setDripPassword(null);
   }, []);
 
   const clearSwapPending = useCallback(() => {
     if (flowType === 'swap') {
       setFlowType(null);
     }
+    setCompletedFlowType(null);
+    setSwapInitiated(false);
     setIsOnboardingModalOpen(false);
   }, [flowType]);
 
-  const completeDripOnboarding = useCallback(
-    async (password: string) => {
-      // Registration already happened in step 2, just store password and complete
-      setDripPassword(password);
-      completeOnboarding();
-    },
-    [completeOnboarding],
-  );
+  const completeDripOnboarding = useCallback(async (password: string) => {
+    // Registration already happened in step 2, store password and transition to executing
+    console.log('completeDripOnboarding called with password:', !!password);
+    setDripPassword(password);
+    setStatusState('executing_drip');
+    console.log('Status set to executing_drip, password set');
+  }, []);
+
+  const completeDripExecution = useCallback(() => {
+    // Called after drip transaction succeeds
+    completeOnboarding();
+  }, [completeOnboarding]);
 
   const clearDripPassword = useCallback(() => {
     setDripPassword(null);
-    setFlowType(null);
+    // Don't clear flowType here - let it persist for modal display
+    // It will be cleared when modal closes or when starting a new flow
   }, []);
 
   const resetOnboarding = useCallback(() => {
     // Reset refs to allow new onboarding session
     hasRegisteredBaseContractsRef.current = false;
     hasSimulatedRef.current = false;
+    hasCheckedDripBalanceRef.current = false;
 
     setStatusState('not_started');
     setError(null);
     setFlowType(null);
+    setOriginalFlowType(null);
+    setCompletedFlowType(null);
+    setSwapInitiated(false);
     setOnboardingResult(null);
     setIsOnboardingModalOpen(false);
     setDripPassword(null);
@@ -332,6 +395,7 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     closeModal,
     clearSwapPending,
     completeDripOnboarding,
+    completeDripExecution,
     clearDripPassword,
     resetOnboarding,
   };
