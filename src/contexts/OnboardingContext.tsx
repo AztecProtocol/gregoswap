@@ -66,7 +66,6 @@ interface OnboardingState {
   totalSteps: number; // Total number of steps
   flowType: OnboardingFlowType | null;
   currentFlow: FlowConfig | null;
-  switchedToDrip: boolean; // True if we detected no tokens and switched to drip flow
 }
 
 // Minimal API exposed to consumers
@@ -75,7 +74,7 @@ interface OnboardingContextType extends OnboardingState {
   isOnboardingModalOpen: boolean;
   onboardingResult: OnboardingResult | null;
 
-  // Derived states
+  // Pending operations after onboarding
   isSwapPending: boolean; // Derived from flowType === 'swap'
   isDripPending: boolean; // Derived from flowType === 'drip'
 
@@ -128,7 +127,6 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
   const [onboardingResult, setOnboardingResult] = useState<OnboardingResult | null>(null);
   const [storedAddress] = useState<AztecAddress | null>(null);
   const [dripPassword, setDripPassword] = useState<string | null>(null);
-  const [switchedToDrip, setSwitchedToDrip] = useState(false);
 
   // Flow state - modal visibility
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false);
@@ -232,7 +230,6 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
 
             if (hasNoTokens) {
               // User has no tokens - switch to drip flow and register ProofOfPassword contracts
-              setSwitchedToDrip(true);
               setFlowType('drip');
               setStatus('registering_drip');
               await registerContractsForFlow('drip');
@@ -276,7 +273,6 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     setSwapInitiated(initiatedSwap); // Track if this is for a swap transaction
     setStatusState('connecting_wallet');
     setError(null);
-    setSwitchedToDrip(false);
     setIsOnboardingModalOpen(true);
   }, []);
 
@@ -328,7 +324,6 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     setOnboardingResult(null);
     setIsOnboardingModalOpen(false);
     setDripPassword(null);
-    setSwitchedToDrip(false);
   }, []);
 
   const value: OnboardingContextType = {
@@ -338,7 +333,6 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     totalSteps,
     flowType,
     currentFlow,
-    switchedToDrip,
     isOnboardingModalOpen,
     isSwapPending,
     isDripPending,

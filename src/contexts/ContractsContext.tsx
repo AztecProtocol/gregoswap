@@ -9,35 +9,7 @@ import { BatchCall, getContractInstanceFromInstantiationParams, type SentTx } fr
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { SPONSORED_FPC_SALT } from '@aztec/constants';
 import type { ProofOfPasswordContract } from '../../contracts/target/ProofOfPassword.ts';
-
-class BigDecimal {
-  // Configuration: private constants
-  static #DECIMALS = 18; // Number of decimals on all instances
-  static #SHIFT = 10n ** BigInt(BigDecimal.#DECIMALS); // Derived constant
-  static #fromBigInt = Symbol(); // Secret to allow construction with given #n value
-  #n; // the BigInt that will hold the BigDecimal's value multiplied by #SHIFT
-  constructor(value, convert?) {
-    if (value instanceof BigDecimal) return value;
-    if (convert === BigDecimal.#fromBigInt) {
-      // Can only be used within this class
-      this.#n = value;
-      return;
-    }
-    const [ints, decis] = String(value).split('.').concat('');
-    this.#n = BigInt(ints + decis.padEnd(BigDecimal.#DECIMALS, '0').slice(0, BigDecimal.#DECIMALS));
-  }
-  divide(num) {
-    return new BigDecimal((this.#n * BigDecimal.#SHIFT) / new BigDecimal(num).#n, BigDecimal.#fromBigInt);
-  }
-  toString() {
-    let s = this.#n
-      .toString()
-      .replace('-', '')
-      .padStart(BigDecimal.#DECIMALS + 1, '0');
-    s = (s.slice(0, -BigDecimal.#DECIMALS) + '.' + s.slice(-BigDecimal.#DECIMALS)).replace(/(\.0*|0+)$/, '');
-    return this.#n < 0 ? '-' + s : s;
-  }
-}
+import { BigDecimal } from '../utils/bigDecimal.ts';
 
 interface ContractsContextType {
   isLoadingContracts: boolean;
@@ -64,43 +36,7 @@ interface ContractsProviderProps {
   children: ReactNode;
 }
 
-// Helper function to get contract registration batch calls
-async function getContractRegistrationBatch(
-  gregoCoinAddress: AztecAddress,
-  gregoCoinPremiumAddress: AztecAddress,
-  liquidityTokenAddress: AztecAddress,
-  deployerAddress: AztecAddress,
-  contractSalt: Fr,
-) {
-  const { TokenContractArtifact } = await import('@aztec/noir-contracts.js/Token');
-  const { AMMContractArtifact } = await import('@aztec/noir-contracts.js/AMM');
-
-  // Reconstruct contract instances using the actual salt from deployment
-  const [ammInstance, gregoCoinInstance, gregoCoinPremiumInstance] = await Promise.all([
-    getContractInstanceFromInstantiationParams(AMMContractArtifact, {
-      salt: contractSalt,
-      deployer: deployerAddress,
-      constructorArgs: [gregoCoinAddress, gregoCoinPremiumAddress, liquidityTokenAddress],
-    }),
-    getContractInstanceFromInstantiationParams(TokenContractArtifact, {
-      salt: contractSalt,
-      deployer: deployerAddress,
-      constructorArgs: [deployerAddress, 'GregoCoin', 'GRG', 18],
-    }),
-    getContractInstanceFromInstantiationParams(TokenContractArtifact, {
-      salt: contractSalt,
-      deployer: deployerAddress,
-      constructorArgs: [deployerAddress, 'GregoCoinPremium', 'GRGP', 18],
-    }),
-  ]);
-
-  return [
-    { name: 'registerContract', args: [ammInstance, AMMContractArtifact, undefined] },
-    { name: 'registerContract', args: [gregoCoinInstance, TokenContractArtifact, undefined] },
-    { name: 'registerContract', args: [gregoCoinPremiumInstance, TokenContractArtifact, undefined] },
-  ];
-}
-
+// Helper function to get SponsoredFPC contract data
 async function getSponsoredFPCData() {
   const { SponsoredFPCContractArtifact } = await import('@aztec/noir-contracts.js/SponsoredFPC');
   const sponsoredFPCInstance = await getContractInstanceFromInstantiationParams(SponsoredFPCContractArtifact, {
@@ -117,61 +53,6 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
   const [amm, setAmm] = useState<AMMContract | null>(null);
   const [pop, setPop] = useState<ProofOfPasswordContract | null>(null);
   const [isLoadingContracts, setIsLoadingContracts] = useState(true);
-
-  useEffect(() => {
-    async function initializeContracts() {
-      if (walletLoading || !wallet) {
-        setIsLoadingContracts(walletLoading);
-        return;
-      }
-
-      // For external wallets, don't initialize until onboarding registers contracts
-      // Keep isLoadingContracts as true until registerContractsForFlow is called
-      if (!isUsingEmbeddedWallet) {
-        return;
-      }
-
-      try {
-        setIsLoadingContracts(true);
-
-        // Get contract addresses and salt from active network config
-        const gregoCoinAddress = AztecAddress.fromString(activeNetwork.contracts.gregoCoin);
-        const gregoCoinPremiumAddress = AztecAddress.fromString(activeNetwork.contracts.gregoCoinPremium);
-        const ammAddress = AztecAddress.fromString(activeNetwork.contracts.amm);
-        const liquidityTokenAddress = AztecAddress.fromString(activeNetwork.contracts.liquidityToken);
-        const deployerAddress = AztecAddress.fromString(activeNetwork.deployer.address);
-        const contractSalt = Fr.fromString(activeNetwork.contracts.salt);
-
-        // Register contracts only for embedded wallet (external wallet registers during onboarding)
-        const registrationBatch = await getContractRegistrationBatch(
-          gregoCoinAddress,
-          gregoCoinPremiumAddress,
-          liquidityTokenAddress,
-          deployerAddress,
-          contractSalt,
-        );
-        await wallet.batch(registrationBatch as unknown as any);
-
-        // Instantiate contracts (only runs after registration for external wallets)
-        const { TokenContract } = await import('@aztec/noir-contracts.js/Token');
-        const { AMMContract } = await import('@aztec/noir-contracts.js/AMM');
-
-        const gregoCoinContract = await TokenContract.at(gregoCoinAddress, wallet);
-        const gregoCoinPremiumContract = await TokenContract.at(gregoCoinPremiumAddress, wallet);
-        const ammContract = await AMMContract.at(ammAddress, wallet);
-
-        setGregoCoin(gregoCoinContract);
-        setGregoCoinPremium(gregoCoinPremiumContract);
-        setAmm(ammContract);
-
-        setIsLoadingContracts(false);
-      } catch (err) {
-        setIsLoadingContracts(false);
-      }
-    }
-
-    initializeContracts();
-  }, [wallet, walletLoading, activeNetwork, isUsingEmbeddedWallet]);
 
   const drip = useCallback(
     async (password: string, recipient: AztecAddress) => {
@@ -274,19 +155,37 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         const liquidityTokenAddress = AztecAddress.fromString(activeNetwork.contracts.liquidityToken);
         const ammAddress = AztecAddress.fromString(activeNetwork.contracts.amm);
 
-        const registrationBatch = await getContractRegistrationBatch(
-          gregoCoinAddress,
-          gregoCoinPremiumAddress,
-          liquidityTokenAddress,
-          deployerAddress,
-          contractSalt,
-        );
-        await wallet.batch(registrationBatch as unknown as any);
+        // Import contract artifacts
+        const { TokenContract, TokenContractArtifact } = await import('@aztec/noir-contracts.js/Token');
+        const { AMMContract, AMMContractArtifact } = await import('@aztec/noir-contracts.js/AMM');
+
+        // Reconstruct contract instances using the actual salt from deployment
+        const [ammInstance, gregoCoinInstance, gregoCoinPremiumInstance] = await Promise.all([
+          getContractInstanceFromInstantiationParams(AMMContractArtifact, {
+            salt: contractSalt,
+            deployer: deployerAddress,
+            constructorArgs: [gregoCoinAddress, gregoCoinPremiumAddress, liquidityTokenAddress],
+          }),
+          getContractInstanceFromInstantiationParams(TokenContractArtifact, {
+            salt: contractSalt,
+            deployer: deployerAddress,
+            constructorArgs: [deployerAddress, 'GregoCoin', 'GRG', 18],
+          }),
+          getContractInstanceFromInstantiationParams(TokenContractArtifact, {
+            salt: contractSalt,
+            deployer: deployerAddress,
+            constructorArgs: [deployerAddress, 'GregoCoinPremium', 'GRGP', 18],
+          }),
+        ]);
+
+        // Register contracts in batch
+        await wallet.batch([
+          { name: 'registerContract', args: [ammInstance, AMMContractArtifact, undefined] },
+          { name: 'registerContract', args: [gregoCoinInstance, TokenContractArtifact, undefined] },
+          { name: 'registerContract', args: [gregoCoinPremiumInstance, TokenContractArtifact, undefined] },
+        ] as unknown as any);
 
         // After registration, instantiate the contracts
-        const { TokenContract } = await import('@aztec/noir-contracts.js/Token');
-        const { AMMContract } = await import('@aztec/noir-contracts.js/AMM');
-
         const gregoCoinContract = await TokenContract.at(gregoCoinAddress, wallet);
         const gregoCoinPremiumContract = await TokenContract.at(gregoCoinPremiumAddress, wallet);
         const ammContract = await AMMContract.at(ammAddress, wallet);
@@ -322,6 +221,30 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     },
     [wallet, node, activeNetwork],
   );
+
+  // Initialize contracts for embedded wallet (external wallets register during onboarding)
+  useEffect(() => {
+    async function initializeContracts() {
+      if (walletLoading || !wallet) {
+        setIsLoadingContracts(walletLoading);
+        return;
+      }
+
+      // For external wallets, don't initialize until onboarding registers contracts
+      if (!isUsingEmbeddedWallet) {
+        return;
+      }
+
+      try {
+        // Use registerContractsForFlow to avoid code duplication
+        await registerContractsForFlow('swap');
+      } catch (err) {
+        setIsLoadingContracts(false);
+      }
+    }
+
+    initializeContracts();
+  }, [wallet, walletLoading, isUsingEmbeddedWallet, registerContractsForFlow]);
 
   const value: ContractsContextType = {
     isLoadingContracts,

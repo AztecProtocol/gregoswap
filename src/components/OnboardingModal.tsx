@@ -46,7 +46,6 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
     currentFlow,
     closeModal,
     completeDripOnboarding,
-    switchedToDrip,
     isSwapPending,
     isDripPending,
   } = useOnboarding();
@@ -505,7 +504,7 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
             )}
 
             {/* Drip flow: show info message during registration */}
-            {status === 'registering_drip' && flowType === 'drip' && switchedToDrip && (
+            {status === 'registering_drip' && flowType === 'drip' && (
               <Box sx={{ mt: 3 }}>
                 <Alert severity="info" sx={{ '& .MuiAlert-message': { width: '100%' } }}>
                   <Typography variant="body2" sx={{ mb: 1.5 }}>
@@ -514,8 +513,8 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
                   <Typography variant="body2" component="div">
                     <strong>Next steps:</strong>
                     <ol style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
-                      <li>Approve contract registration in your wallet</li>
-                      <li>Provide a password to claim your tokens</li>
+                      <li>Approve the registration of ProofOfPassword contract in your wallet</li>
+                      <li>Provide the password to claim your tokens</li>
                       <li>Authorize the transaction</li>
                     </ol>
                   </Typography>
