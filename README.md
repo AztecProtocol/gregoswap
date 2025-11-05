@@ -19,32 +19,19 @@ Before you begin, ensure you have the following installed:
 
 ## Installation
 
-### 1. Clone the Repository
-
-```bash
-git clone <repository-url>
-cd gregoswap
-```
-
-### 2. Enable Corepack (for Yarn)
-
-```bash
-corepack enable
-```
-
-### 3. Install Dependencies
+### 1. Install Dependencies
 
 ```bash
 yarn install
 ```
 
-### 4. Install Aztec CLI
+### 2. Install Aztec CLI
 
 ```bash
 curl -s https://install.aztec.network | bash
 ```
 
-### 5. Set Aztec Version
+### 3. Set Aztec Version
 
 The project uses Aztec version `v3.0.0-devnet.2`. Set it using:
 
@@ -67,7 +54,7 @@ aztec start --sandbox
 
 This will start a local Aztec node on `http://localhost:8080`.
 
-**Note**: Keep this terminal running while developing. The sandbox must be running for contract deployment and local testing.
+**Note**: Keep this terminal running while developing. The local node must be running for contract deployment and local testing.
 
 #### 2. Compile Contracts
 
