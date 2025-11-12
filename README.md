@@ -36,7 +36,7 @@ curl -s https://install.aztec.network | bash
 The project uses Aztec version `v3.0.0-devnet.2`. Set it using:
 
 ```bash
-aztec-up v3.0.0-devnet.2
+aztec-up 3.0.0-devnet.2
 docker tag aztecprotocol/aztec:3.0.0-devnet.2 aztecprotocol/aztec:latest # Temporary workaround for aztec-nargo issues
 ```
 
