@@ -33,11 +33,11 @@ curl -s https://install.aztec.network | bash
 
 ### 3. Set Aztec Version
 
-The project uses Aztec version `v3.0.0-nightly.20251119`. Set it using:
+The project uses Aztec version `v3.0.0-nightly.20251120`. Set it using:
 
 ```bash
-aztec-up v3.0.0-nightly.20251119
-docker tag aztecprotocol/aztec:3.0.0-nightly.20251119 aztecprotocol/aztec:latest # Temporary workaround for aztec-nargo issues
+aztec-up v3.0.0-nightly.20251120
+docker tag aztecprotocol/aztec:3.0.0-nightly.20251120 aztecprotocol/aztec:latest # Temporary workaround for aztec-nargo issues
 ```
 
 ## Development Setup
