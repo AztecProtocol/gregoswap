@@ -48,7 +48,7 @@ aztec-up 3.0.0-devnet.20251212
 In a separate terminal, start the local Aztec sandbox:
 
 ```bash
-aztec start --sandbox
+aztec start --local-network
 ```
 
 This will start a local Aztec node on `http://localhost:8080`.
