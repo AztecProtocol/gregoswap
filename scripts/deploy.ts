@@ -11,7 +11,7 @@ import { deriveSigningKey } from '@aztec/stdlib/keys';
 import { AztecAddress } from '@aztec/stdlib/aztec-address';
 import { createAztecNodeClient, type AztecNode } from '@aztec/aztec.js/node';
 import { getContractInstanceFromInstantiationParams } from '@aztec/stdlib/contract';
-import { Fr } from '@aztec/foundation/fields';
+import { Fr } from '@aztec/foundation/curves/bn254';
 import type { DeployAccountOptions } from '@aztec/aztec.js/wallet';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 

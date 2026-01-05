@@ -3,16 +3,17 @@ import { SchnorrAccountContract } from '@aztec/accounts/schnorr/lazy';
 
 import { getPXEConfig, type PXEConfig } from '@aztec/pxe/config';
 import { createPXE, PXE } from '@aztec/pxe/client/lazy';
-import { Fr, GrumpkinScalar } from '@aztec/foundation/fields';
 import { AztecAddress } from '@aztec/stdlib/aztec-address';
 import { getContractInstanceFromInstantiationParams } from '@aztec/stdlib/contract';
 import { mergeExecutionPayloads, type ExecutionPayload, type TxSimulationResult } from '@aztec/stdlib/tx';
 import type { DefaultAccountEntrypointOptions } from '@aztec/entrypoints/account';
 import { deriveSigningKey } from '@aztec/stdlib/keys';
 import { SignerlessAccount, type Account, type AccountContract } from '@aztec/aztec.js/account';
-import { AccountManager, BaseWallet } from '@aztec/aztec.js/wallet';
+import { AccountManager } from '@aztec/aztec.js/wallet';
 import type { AztecNode } from '@aztec/aztec.js/node';
 import type { SimulateInteractionOptions } from '@aztec/aztec.js/contracts';
+import { Fr, GrumpkinScalar } from '@aztec/aztec.js/fields';
+import { BaseWallet } from '@aztec/wallet-sdk/base-wallet';
 
 /**
  * Data for generating an account.
