@@ -186,9 +186,9 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         ] as unknown as any);
 
         // After registration, instantiate the contracts
-        const gregoCoinContract = await TokenContract.at(gregoCoinAddress, wallet);
-        const gregoCoinPremiumContract = await TokenContract.at(gregoCoinPremiumAddress, wallet);
-        const ammContract = await AMMContract.at(ammAddress, wallet);
+        const gregoCoinContract = TokenContract.at(gregoCoinAddress, wallet);
+        const gregoCoinPremiumContract = TokenContract.at(gregoCoinPremiumAddress, wallet);
+        const ammContract = AMMContract.at(ammAddress, wallet);
 
         setGregoCoin(gregoCoinContract);
         setGregoCoinPremium(gregoCoinPremiumContract);
@@ -213,7 +213,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         ]);
 
         // After registration, instantiate the ProofOfPassword contract
-        const popContract = await ProofOfPasswordContract.at(popAddress, wallet);
+        const popContract = ProofOfPasswordContract.at(popAddress, wallet);
         setPop(popContract);
 
         setIsLoadingContracts(false);
