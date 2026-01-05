@@ -42,8 +42,6 @@ jobs:
       - name: Set Aztec version
         run: |
           aztec-up ${{ vars.VERSION }}
-          docker pull aztecprotocol/aztec:${{ vars.VERSION }}
-          docker tag aztecprotocol/aztec:${{ vars.VERSION }} aztecprotocol/aztec:latest
 
       - name: Compile contracts
         run: yarn compile:contracts
