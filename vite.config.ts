@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv, Plugin, ResolvedConfig } from 'vite';
+import { defineConfig, loadEnv, Plugin, ResolvedConfig, searchForWorkspaceRoot } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import { PolyfillOptions, nodePolyfills } from 'vite-plugin-node-polyfills';
 import fs from 'fs';
@@ -103,6 +103,17 @@ export default defineConfig(({ mode }) => {
       headers: {
         'Cross-Origin-Opener-Policy': 'same-origin',
         'Cross-Origin-Embedder-Policy': 'require-corp',
+      },
+      // Allow vite to serve files from these directories, since they are symlinked
+      // These are the protocol circuit artifacts, noir WASMs and bb WASMs.
+      fs: {
+        allow: [
+          searchForWorkspaceRoot(process.cwd()),
+          '../aztec-packages/yarn-project/noir-protocol-circuits-types/artifacts',
+          '../aztec-packages/noir/packages/noirc_abi/web',
+          '../aztec-packages/noir/packages/acvm_js/web',
+          '../aztec-packages/barretenberg/ts/dest/browser',
+        ],
       },
     },
     optimizeDeps: {

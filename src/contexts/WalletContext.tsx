@@ -1,12 +1,12 @@
 import { createContext, useContext, useState, useEffect, useRef, type ReactNode, useCallback } from 'react';
 import { EmbeddedWallet } from '../embedded_wallet';
-import { ExtensionWallet } from '../extension_wallet';
 import { createAztecNodeClient, type AztecNode } from '@aztec/aztec.js/node';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ChainInfo } from '@aztec/aztec.js/account';
 import { useNetwork } from './NetworkContext';
 import { Fr } from '@aztec/aztec.js/fields';
+import { WalletManager } from '@aztec/wallet-sdk/manager';
 
 interface WalletContextType {
   wallet: Wallet | null;
@@ -111,7 +111,18 @@ export function WalletProvider({ children }: WalletProviderProps) {
     };
 
     const appId = 'gregoswap';
-    const extensionWallet = ExtensionWallet.create(chainInfo, appId);
+
+    // Use WalletManager to discover and connect to extension wallets
+    const manager = WalletManager.configure({ extensions: { enabled: true } });
+    const providers = await manager.getAvailableWallets({ chainInfo, timeout: 2000 });
+
+    if (providers.length === 0) {
+      throw new Error('No wallet extensions found. Please install a compatible Aztec wallet extension.');
+    }
+
+    // Connect to the first available wallet provider
+    const provider = providers[0];
+    const extensionWallet = await provider.connect(appId);
 
     // Mark that user explicitly connected an external wallet
     hasConnectedExternalWalletRef.current = true;
