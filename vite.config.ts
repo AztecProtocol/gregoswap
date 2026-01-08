@@ -104,16 +104,8 @@ export default defineConfig(({ mode }) => {
         'Cross-Origin-Opener-Policy': 'same-origin',
         'Cross-Origin-Embedder-Policy': 'require-corp',
       },
-      // Allow vite to serve files from these directories, since they are symlinked
-      // These are the protocol circuit artifacts, noir WASMs and bb WASMs.
       fs: {
-        allow: [
-          searchForWorkspaceRoot(process.cwd()),
-          '../aztec-packages/yarn-project/noir-protocol-circuits-types/artifacts',
-          '../aztec-packages/noir/packages/noirc_abi/web',
-          '../aztec-packages/noir/packages/acvm_js/web',
-          '../aztec-packages/barretenberg/ts/dest/browser',
-        ],
+        allow: [searchForWorkspaceRoot(process.cwd())],
       },
     },
     optimizeDeps: {

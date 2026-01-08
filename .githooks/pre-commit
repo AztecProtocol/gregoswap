@@ -1,0 +1,75 @@
+#!/bin/bash
+
+# Pre-commit hook to strip local aztec-packages resolutions from package.json
+# and clean up vite.config.ts fs.allow paths
+# This prevents accidentally committing local development paths
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
+MODIFIED=0
+
+# Check package.json
+PACKAGE_FILE="package.json"
+FULL_PATH="$REPO_ROOT/$PACKAGE_FILE"
+
+if [ -f "$FULL_PATH" ] && git diff --cached --name-only | grep -q "^$PACKAGE_FILE$"; then
+  # Check if resolutions field exists with link: entries
+  if grep -q '"resolutions"' "$FULL_PATH" && grep -q '"link:' "$FULL_PATH"; then
+    echo "Stripping local resolutions from $PACKAGE_FILE..."
+
+    # Use node to remove the resolutions field
+    node -e "
+      const fs = require('fs');
+      const pkg = JSON.parse(fs.readFileSync('$FULL_PATH', 'utf-8'));
+      if (pkg.resolutions) {
+        delete pkg.resolutions;
+        fs.writeFileSync('$FULL_PATH', JSON.stringify(pkg, null, 2) + '\n');
+      }
+    "
+
+    # Re-stage the file
+    git add "$FULL_PATH"
+    MODIFIED=1
+  fi
+fi
+
+# Check vite.config.ts for absolute aztec-packages paths
+VITE_CONFIG="vite.config.ts"
+VITE_PATH="$REPO_ROOT/$VITE_CONFIG"
+
+if [ -f "$VITE_PATH" ] && git diff --cached --name-only | grep -q "^$VITE_CONFIG$"; then
+  # Check if fs.allow contains absolute paths to aztec-packages
+  if grep -q "allow:" "$VITE_PATH" && grep -E "'/.*aztec-packages/" "$VITE_PATH" > /dev/null 2>&1; then
+    echo "Cleaning up vite.config.ts fs.allow paths..."
+
+    # Use node to clean up the vite config
+    node -e "
+      const fs = require('fs');
+      let content = fs.readFileSync('$VITE_PATH', 'utf-8');
+
+      // Replace fs.allow block with minimal version
+      const fsBlockRegex = /fs:\s*\{[\s\S]*?allow:\s*\[[\s\S]*?\],[\s\S]*?\},/;
+      const minimalFsAllowBlock = \`fs: {
+        allow: [searchForWorkspaceRoot(process.cwd())],
+      },\`;
+
+      if (fsBlockRegex.test(content)) {
+        content = content.replace(fsBlockRegex, minimalFsAllowBlock);
+        fs.writeFileSync('$VITE_PATH', content);
+      }
+    "
+
+    # Re-stage the file
+    git add "$VITE_PATH"
+    MODIFIED=1
+  fi
+fi
+
+if [ $MODIFIED -eq 1 ]; then
+  echo ""
+  echo "Local development paths have been stripped."
+  echo "The commit will proceed with the cleaned files."
+  echo ""
+fi
+
+exit 0
