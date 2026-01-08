@@ -12,6 +12,10 @@ on:
 env:
   PASSWORD: ${{ secrets.PASSWORD }}
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
