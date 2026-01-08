@@ -12,6 +12,7 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
+import { execSync } from "child_process";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -158,8 +159,8 @@ function getViteFsAllowStatus() {
 
   const content = readFileSync(viteConfigPath, "utf-8");
 
-  // Look for aztec-packages paths in the fs.allow block
-  const match = content.match(/allow:\s*\[[\s\S]*?'([^']+\/(?:yarn-project|barretenberg|noir))/);
+  // Look for absolute aztec-packages paths in the fs.allow block (starting with /)
+  const match = content.match(/allow:\s*\[[\s\S]*?'(\/[^']+\/(?:yarn-project|barretenberg|noir))/);
   if (match) {
     // Extract the base path
     const fullPath = match[1];
@@ -168,6 +169,30 @@ function getViteFsAllowStatus() {
   }
 
   return null;
+}
+
+function setupGitHooks() {
+  const hooksPath = resolve(ROOT, ".githooks");
+  if (!existsSync(hooksPath)) {
+    console.log("Warning: .githooks directory not found, skipping hook setup");
+    return;
+  }
+
+  try {
+    execSync("git config core.hooksPath .githooks", { cwd: ROOT, stdio: "pipe" });
+    console.log("Configured git hooks to use .githooks directory");
+  } catch (error) {
+    console.log("Warning: Failed to configure git hooks:", error.message);
+  }
+}
+
+function runYarnInstall() {
+  console.log("\nRunning yarn install...");
+  try {
+    execSync("yarn install", { cwd: ROOT, stdio: "inherit" });
+  } catch (error) {
+    console.error("Failed to run yarn install:", error.message);
+  }
 }
 
 function enable(aztecPath) {
@@ -204,9 +229,14 @@ function enable(aztecPath) {
 
   updateViteConfig(resolvedPath);
 
+  // Setup git hooks to prevent accidental commits
+  setupGitHooks();
+
   console.log(`\nLocal aztec-packages resolutions enabled.`);
   console.log(`Path: ${resolvedPath}`);
-  console.log(`\nRun 'yarn install' to apply changes.`);
+
+  // Run yarn install
+  runYarnInstall();
 }
 
 function disable() {
@@ -229,7 +259,9 @@ function disable() {
   removeViteFsAllow();
 
   console.log(`\nLocal aztec-packages resolutions disabled.`);
-  console.log(`\nRun 'yarn install' to apply changes.`);
+
+  // Run yarn install
+  runYarnInstall();
 }
 
 function status() {
@@ -255,6 +287,14 @@ function status() {
     console.log(`${VITE_CONFIG}: ENABLED (${vitePath})`);
   } else {
     console.log(`${VITE_CONFIG}: disabled`);
+  }
+
+  // Check git hooks status
+  try {
+    const hooksPath = execSync("git config core.hooksPath", { cwd: ROOT, stdio: "pipe" }).toString().trim();
+    console.log(`git hooks: ${hooksPath || "default"}`);
+  } catch {
+    console.log("git hooks: default");
   }
 }
 
