@@ -64,7 +64,6 @@ async function setupWallet(aztecNode: AztecNode) {
 
   return await TestWallet.create(aztecNode, config, {
     proverOrOptions: {
-      bbPath: path.resolve('../demo-wallet/app/bb/bb'),
       logger: createLogger('bb:native'),
     },
   });
