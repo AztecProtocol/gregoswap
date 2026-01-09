@@ -6,7 +6,16 @@ import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ChainInfo } from '@aztec/aztec.js/account';
 import { useNetwork } from './NetworkContext';
 import { Fr } from '@aztec/aztec.js/fields';
-import { WalletManager } from '@aztec/wallet-sdk/manager';
+import { WalletManager, type WalletProvider } from '@aztec/wallet-sdk/manager';
+import { hashToEmoji } from '@aztec/wallet-sdk/crypto';
+
+/**
+ * Discovered wallet with verification emoji for anti-MITM protection
+ */
+export interface DiscoveredWalletWithEmoji {
+  provider: WalletProvider;
+  verificationEmoji: string;
+}
 
 interface WalletContextType {
   wallet: Wallet | null;
@@ -15,6 +24,11 @@ interface WalletContextType {
   isLoading: boolean;
   error: string | null;
   isUsingEmbeddedWallet: boolean;
+  /** Discovers available wallet extensions with verification emojis */
+  discoverWallets: () => Promise<DiscoveredWalletWithEmoji[]>;
+  /** Connects to a specific wallet provider (after user verifies emoji) */
+  connectToProvider: (provider: WalletProvider) => Promise<Wallet>;
+  /** Legacy: discovers and connects to first available wallet (no verification) */
   connectWallet: () => Promise<Wallet>;
   setCurrentAddress: (address: AztecAddress | null) => void;
   disconnectWallet: () => void;
@@ -104,24 +118,34 @@ export function WalletProvider({ children }: WalletProviderProps) {
     initializeWallet();
   }, [activeNetwork]); // Depend on activeNetwork but check nodeUrl manually
 
-  const connectWallet = useCallback(async (): Promise<Wallet> => {
+  /**
+   * Discovers available wallet extensions and returns them with verification emojis.
+   * The emoji is derived from the ECDH shared secret - both dApp and wallet compute
+   * the same emoji independently, allowing users to verify no MITM attack.
+   */
+  const discoverWallets = useCallback(async (): Promise<DiscoveredWalletWithEmoji[]> => {
     const chainInfo: ChainInfo = {
       chainId: Fr.fromString(activeNetwork.chainId),
       version: Fr.fromString(activeNetwork.rollupVersion),
     };
 
-    const appId = 'gregoswap';
-
-    // Use WalletManager to discover and connect to extension wallets
     const manager = WalletManager.configure({ extensions: { enabled: true } });
     const providers = await manager.getAvailableWallets({ chainInfo, timeout: 2000 });
 
-    if (providers.length === 0) {
-      throw new Error('No wallet extensions found. Please install a compatible Aztec wallet extension.');
-    }
+    // Map providers to include verification emoji
+    return providers.map(provider => ({
+      provider,
+      verificationEmoji: provider.metadata.verificationHash
+        ? hashToEmoji(provider.metadata.verificationHash as string)
+        : '',
+    }));
+  }, [activeNetwork]);
 
-    // Connect to the first available wallet provider
-    const provider = providers[0];
+  /**
+   * Connects to a specific wallet provider after user has verified the emoji.
+   */
+  const connectToProvider = useCallback(async (provider: WalletProvider): Promise<Wallet> => {
+    const appId = 'gregoswap';
     const extensionWallet = await provider.connect(appId);
 
     // Mark that user explicitly connected an external wallet
@@ -132,7 +156,22 @@ export function WalletProvider({ children }: WalletProviderProps) {
     setCurrentAddress(null);
     setIsUsingEmbeddedWallet(false);
     return extensionWallet;
-  }, [activeNetwork]);
+  }, []);
+
+  /**
+   * Legacy: discovers and connects to first available wallet (no verification step).
+   * Kept for backwards compatibility.
+   */
+  const connectWallet = useCallback(async (): Promise<Wallet> => {
+    const wallets = await discoverWallets();
+
+    if (wallets.length === 0) {
+      throw new Error('No wallet extensions found. Please install a compatible Aztec wallet extension.');
+    }
+
+    // Connect to the first available wallet provider
+    return connectToProvider(wallets[0].provider);
+  }, [discoverWallets, connectToProvider]);
 
   const disconnectWallet = useCallback(() => {
     // Restore embedded wallet and address
@@ -151,6 +190,8 @@ export function WalletProvider({ children }: WalletProviderProps) {
     isLoading,
     error,
     isUsingEmbeddedWallet,
+    discoverWallets,
+    connectToProvider,
     connectWallet,
     setCurrentAddress,
     disconnectWallet,

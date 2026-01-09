@@ -9,7 +9,7 @@
  *   node scripts/toggle-local-aztec.js status
  */
 
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, rmSync, readdirSync, statSync, lstatSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
@@ -186,7 +186,114 @@ function setupGitHooks() {
   }
 }
 
+/**
+ * Recursively finds and removes broken @aztec symlinks in node_modules.
+ * This fixes issues where Yarn leaves stale portal symlinks when switching
+ * between local and npm resolutions.
+ */
+function cleanupBrokenAztecSymlinks(dir) {
+  const nodeModulesPath = resolve(dir, "node_modules");
+  if (!existsSync(nodeModulesPath)) {
+    return 0;
+  }
+
+  let cleaned = 0;
+
+  // Clean @aztec directory in this node_modules
+  const aztecPath = resolve(nodeModulesPath, "@aztec");
+  if (existsSync(aztecPath)) {
+    try {
+      const entries = readdirSync(aztecPath);
+      for (const entry of entries) {
+        const entryPath = resolve(aztecPath, entry);
+        const stats = lstatSync(entryPath);
+
+        // Check if it's a symlink
+        if (stats.isSymbolicLink()) {
+          // Check if the symlink target exists
+          try {
+            statSync(entryPath); // This follows the symlink
+          } catch {
+            // Broken symlink - remove it
+            console.log(`  Removing broken symlink: ${entryPath}`);
+            rmSync(entryPath, { force: true });
+            cleaned++;
+          }
+        } else if (stats.isDirectory()) {
+          // Check if directory is essentially empty or only contains node_modules
+          const contents = readdirSync(entryPath);
+          const hasOnlyNodeModules = contents.length === 0 ||
+            (contents.length === 1 && contents[0] === "node_modules");
+          if (hasOnlyNodeModules) {
+            console.log(`  Removing broken package dir: ${entryPath}`);
+            rmSync(entryPath, { recursive: true, force: true });
+            cleaned++;
+          }
+        }
+      }
+
+      // Remove @aztec dir if empty
+      const remaining = readdirSync(aztecPath);
+      if (remaining.length === 0) {
+        rmSync(aztecPath, { recursive: true, force: true });
+      }
+    } catch (err) {
+      // Ignore errors reading directories
+    }
+  }
+
+  // Recursively check nested node_modules in @aztec packages and other deps
+  try {
+    const entries = readdirSync(nodeModulesPath);
+    for (const entry of entries) {
+      if (entry === ".bin" || entry === ".cache") continue;
+
+      const entryPath = resolve(nodeModulesPath, entry);
+      const stats = lstatSync(entryPath);
+
+      if (stats.isDirectory() && !stats.isSymbolicLink()) {
+        if (entry === "@aztec") {
+          // Check subdirectories of @aztec
+          const aztecEntries = readdirSync(entryPath);
+          for (const aztecEntry of aztecEntries) {
+            const aztecEntryPath = resolve(entryPath, aztecEntry);
+            const aztecStats = lstatSync(aztecEntryPath);
+            if (aztecStats.isDirectory() && !aztecStats.isSymbolicLink()) {
+              cleaned += cleanupBrokenAztecSymlinks(aztecEntryPath);
+            }
+          }
+        } else if (entry.startsWith("@")) {
+          // Scoped package - check subdirectories
+          const scopedEntries = readdirSync(entryPath);
+          for (const scopedEntry of scopedEntries) {
+            const scopedPath = resolve(entryPath, scopedEntry);
+            const scopedStats = lstatSync(scopedPath);
+            if (scopedStats.isDirectory() && !scopedStats.isSymbolicLink()) {
+              cleaned += cleanupBrokenAztecSymlinks(scopedPath);
+            }
+          }
+        } else {
+          cleaned += cleanupBrokenAztecSymlinks(entryPath);
+        }
+      }
+    }
+  } catch {
+    // Ignore errors
+  }
+
+  return cleaned;
+}
+
 function runYarnInstall() {
+  // First, clean up broken symlinks
+  console.log("\nCleaning up stale @aztec symlinks...");
+  const cleaned = cleanupBrokenAztecSymlinks(ROOT);
+  if (cleaned > 0) {
+    console.log(`  Cleaned ${cleaned} broken symlinks/directories`);
+  } else {
+    console.log("  No broken symlinks found");
+  }
+
   console.log("\nRunning yarn install...");
   try {
     execSync("yarn install", { cwd: ROOT, stdio: "inherit" });
