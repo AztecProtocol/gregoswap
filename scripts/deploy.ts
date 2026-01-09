@@ -16,6 +16,7 @@ import type { DeployAccountOptions } from '@aztec/aztec.js/wallet';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 
 import { ProofOfPasswordContract } from '../contracts/target/ProofOfPassword.ts';
+import { createLogger } from '@aztec/foundation/log';
 
 // Parse network from CLI args (--network <name>)
 function getNetworkFromArgs(): string {
@@ -61,7 +62,12 @@ async function setupWallet(aztecNode: AztecNode) {
   config.dataDirectory = PXE_STORE_DIR;
   config.proverEnabled = PROVER_ENABLED;
 
-  return await TestWallet.create(aztecNode, config);
+  return await TestWallet.create(aztecNode, config, {
+    proverOrOptions: {
+      bbPath: path.resolve('../demo-wallet/app/bb/bb'),
+      logger: createLogger('bb:native'),
+    },
+  });
 }
 
 async function getSponsoredPFCContract() {
