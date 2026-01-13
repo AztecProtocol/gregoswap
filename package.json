@@ -17,8 +17,8 @@
     "deploy:devnet": "node --experimental-transform-types scripts/deploy.ts --network devnet",
     "formatting": "run -T prettier --check ./src && run -T eslint ./src",
     "formatting:fix": "run -T eslint --fix ./src && run -T prettier -w ./src",
-    "local-aztec:enable": "node scripts/toggle-local-aztec.js enable && yarn install",
-    "local-aztec:disable": "node scripts/toggle-local-aztec.js disable && yarn install",
+    "local-aztec:enable": "node scripts/toggle-local-aztec.js enable && corepack yarn install",
+    "local-aztec:disable": "node scripts/toggle-local-aztec.js disable && corepack yarn install",
     "local-aztec:status": "node scripts/toggle-local-aztec.js status"
   },
   "dependencies": {
