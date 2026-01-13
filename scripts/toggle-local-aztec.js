@@ -16,6 +16,7 @@ import { execSync } from "child_process";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
+const SAVED_PATH_FILE = resolve(ROOT, ".local-aztec-path");
 
 // Package.json files to modify (relative to repo root)
 const PACKAGE_FILES = ["package.json"];
@@ -71,6 +72,17 @@ const VITE_FS_ALLOW_PATHS = [
   "noir/packages/acvm_js/web",
   "barretenberg/ts/dest/browser",
 ];
+
+function savePath(aztecPath) {
+  writeFileSync(SAVED_PATH_FILE, aztecPath);
+}
+
+function loadSavedPath() {
+  if (existsSync(SAVED_PATH_FILE)) {
+    return readFileSync(SAVED_PATH_FILE, "utf-8").trim();
+  }
+  return null;
+}
 
 function readPackageJson(filePath) {
   const fullPath = resolve(ROOT, filePath);
@@ -296,10 +308,17 @@ function cleanupSymlinks() {
 }
 
 function enable(aztecPath) {
+  // If no path provided, try to load the saved path
   if (!aztecPath) {
-    console.error("Error: aztec-packages path is required for enable command");
-    console.error("Usage: node scripts/toggle-local-aztec.js enable /path/to/aztec-packages");
-    process.exit(1);
+    aztecPath = loadSavedPath();
+    if (aztecPath) {
+      console.log(`Using saved path: ${aztecPath}`);
+    } else {
+      console.error("Error: aztec-packages path is required for enable command");
+      console.error("Usage: node scripts/toggle-local-aztec.js enable /path/to/aztec-packages");
+      console.error("       yarn local-aztec:enable  (uses saved path)");
+      process.exit(1);
+    }
   }
 
   const resolvedPath = resolve(aztecPath);
@@ -331,6 +350,9 @@ function enable(aztecPath) {
 
   // Setup git hooks to prevent accidental commits
   setupGitHooks();
+
+  // Save the path for future use
+  savePath(resolvedPath);
 
   console.log(`\nLocal aztec-packages resolutions enabled.`);
   console.log(`Path: ${resolvedPath}`);
