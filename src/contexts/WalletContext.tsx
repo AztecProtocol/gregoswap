@@ -6,16 +6,21 @@ import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ChainInfo } from '@aztec/aztec.js/account';
 import { useNetwork } from './NetworkContext';
 import { Fr } from '@aztec/aztec.js/fields';
-import { WalletManager, type WalletProvider } from '@aztec/wallet-sdk/manager';
+import { WalletManager, type WalletProvider as WalletProviderType } from '@aztec/wallet-sdk/manager';
 import { hashToEmoji } from '@aztec/wallet-sdk/crypto';
 
 /**
  * Discovered wallet with verification emoji for anti-MITM protection
  */
 export interface DiscoveredWalletWithEmoji {
-  provider: WalletProvider;
+  provider: WalletProviderType;
   verificationEmoji: string;
 }
+
+/**
+ * Callback type for wallet disconnect events
+ */
+export type WalletDisconnectCallback = () => void;
 
 interface WalletContextType {
   wallet: Wallet | null;
@@ -27,11 +32,13 @@ interface WalletContextType {
   /** Discovers available wallet extensions with verification emojis */
   discoverWallets: () => Promise<DiscoveredWalletWithEmoji[]>;
   /** Connects to a specific wallet provider (after user verifies emoji) */
-  connectToProvider: (provider: WalletProvider) => Promise<Wallet>;
+  connectToProvider: (provider: WalletProviderType) => Promise<Wallet>;
   /** Legacy: discovers and connects to first available wallet (no verification) */
   connectWallet: () => Promise<Wallet>;
   setCurrentAddress: (address: AztecAddress | null) => void;
-  disconnectWallet: () => void;
+  disconnectWallet: () => Promise<void>;
+  /** Register a callback to be notified when the wallet unexpectedly disconnects */
+  onWalletDisconnect: (callback: WalletDisconnectCallback) => () => void;
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
@@ -62,6 +69,13 @@ export function WalletProvider({ children }: WalletProviderProps) {
   const embeddedAddressRef = useRef<AztecAddress | null>(null);
   const previousNodeUrlRef = useRef<string | null>(null);
   const hasConnectedExternalWalletRef = useRef(false); // Track if user explicitly connected external wallet
+
+  // Track current provider and disconnect unsubscribe function
+  const currentProviderRef = useRef<WalletProviderType | null>(null);
+  const providerDisconnectUnsubscribeRef = useRef<(() => void) | null>(null);
+
+  // Callbacks registered by consumers to be notified of unexpected disconnects
+  const disconnectCallbacksRef = useRef<Set<WalletDisconnectCallback>>(new Set());
 
   useEffect(() => {
     const nodeUrl = activeNetwork?.nodeUrl;
@@ -119,6 +133,42 @@ export function WalletProvider({ children }: WalletProviderProps) {
   }, [activeNetwork]); // Depend on activeNetwork but check nodeUrl manually
 
   /**
+   * Handles unexpected wallet disconnection.
+   * Cleans up provider references and notifies registered callbacks.
+   */
+  const handleUnexpectedDisconnect = useCallback(() => {
+    console.log('Wallet disconnected unexpectedly');
+
+    // Clean up provider references
+    if (providerDisconnectUnsubscribeRef.current) {
+      providerDisconnectUnsubscribeRef.current();
+      providerDisconnectUnsubscribeRef.current = null;
+    }
+    currentProviderRef.current = null;
+
+    // Reset wallet state - restore embedded wallet
+    hasConnectedExternalWalletRef.current = false;
+    if (embeddedWalletRef.current) {
+      setWallet(embeddedWalletRef.current);
+      setCurrentAddress(embeddedAddressRef.current);
+      setIsUsingEmbeddedWallet(true);
+    } else {
+      setWallet(null);
+      setCurrentAddress(null);
+      setIsUsingEmbeddedWallet(true);
+    }
+
+    // Notify all registered callbacks
+    for (const callback of disconnectCallbacksRef.current) {
+      try {
+        callback();
+      } catch {
+        // Ignore errors in callbacks
+      }
+    }
+  }, []);
+
+  /**
    * Discovers available wallet extensions and returns them with verification emojis.
    * The emoji is derived from the ECDH shared secret - both dApp and wallet compute
    * the same emoji independently, allowing users to verify no MITM attack.
@@ -144,9 +194,31 @@ export function WalletProvider({ children }: WalletProviderProps) {
   /**
    * Connects to a specific wallet provider after user has verified the emoji.
    */
-  const connectToProvider = useCallback(async (provider: WalletProvider): Promise<Wallet> => {
+  const connectToProvider = useCallback(async (provider: WalletProviderType): Promise<Wallet> => {
+    // Disconnect from previous provider if any
+    if (currentProviderRef.current && currentProviderRef.current.disconnect) {
+      // Unsubscribe from previous disconnect callback
+      if (providerDisconnectUnsubscribeRef.current) {
+        providerDisconnectUnsubscribeRef.current();
+        providerDisconnectUnsubscribeRef.current = null;
+      }
+      try {
+        await currentProviderRef.current.disconnect();
+      } catch (error) {
+        console.warn('Error disconnecting previous wallet:', error);
+      }
+    }
+
     const appId = 'gregoswap';
     const extensionWallet = await provider.connect(appId);
+
+    // Store provider reference
+    currentProviderRef.current = provider;
+
+    // Register for disconnect events from the provider
+    if (provider.onDisconnect) {
+      providerDisconnectUnsubscribeRef.current = provider.onDisconnect(handleUnexpectedDisconnect);
+    }
 
     // Mark that user explicitly connected an external wallet
     hasConnectedExternalWalletRef.current = true;
@@ -156,7 +228,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
     setCurrentAddress(null);
     setIsUsingEmbeddedWallet(false);
     return extensionWallet;
-  }, []);
+  }, [handleUnexpectedDisconnect]);
 
   /**
    * Legacy: discovers and connects to first available wallet (no verification step).
@@ -173,7 +245,23 @@ export function WalletProvider({ children }: WalletProviderProps) {
     return connectToProvider(wallets[0].provider);
   }, [discoverWallets, connectToProvider]);
 
-  const disconnectWallet = useCallback(() => {
+  const disconnectWallet = useCallback(async () => {
+    // Unsubscribe from disconnect callback before disconnecting
+    if (providerDisconnectUnsubscribeRef.current) {
+      providerDisconnectUnsubscribeRef.current();
+      providerDisconnectUnsubscribeRef.current = null;
+    }
+
+    // Disconnect from current provider
+    if (currentProviderRef.current && currentProviderRef.current.disconnect) {
+      try {
+        await currentProviderRef.current.disconnect();
+      } catch (error) {
+        console.warn('Error disconnecting wallet:', error);
+      }
+    }
+    currentProviderRef.current = null;
+
     // Restore embedded wallet and address
     if (embeddedWalletRef.current) {
       hasConnectedExternalWalletRef.current = false; // Reset flag when disconnecting
@@ -181,6 +269,26 @@ export function WalletProvider({ children }: WalletProviderProps) {
       setCurrentAddress(embeddedAddressRef.current);
       setIsUsingEmbeddedWallet(true);
     }
+  }, []);
+
+  /**
+   * Register a callback to be notified when the wallet unexpectedly disconnects.
+   * Returns a function to unregister the callback.
+   */
+  const onWalletDisconnect = useCallback((callback: WalletDisconnectCallback): (() => void) => {
+    disconnectCallbacksRef.current.add(callback);
+    return () => {
+      disconnectCallbacksRef.current.delete(callback);
+    };
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (providerDisconnectUnsubscribeRef.current) {
+        providerDisconnectUnsubscribeRef.current();
+      }
+    };
   }, []);
 
   const value: WalletContextType = {
@@ -195,6 +303,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
     connectWallet,
     setCurrentAddress,
     disconnectWallet,
+    onWalletDisconnect,
   };
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

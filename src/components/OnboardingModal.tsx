@@ -30,6 +30,8 @@ import { useOnboarding } from '../contexts/OnboardingContext';
 import { useWallet, type DiscoveredWalletWithEmoji } from '../contexts/WalletContext';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { Aliased } from '@aztec/aztec.js/wallet';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 
 type WalletConnectionPhase = 'discovering' | 'verifying' | 'connecting' | 'selecting_account';
 
@@ -52,7 +54,7 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
     isSwapPending,
     isDripPending,
   } = useOnboarding();
-  const { discoverWallets, connectToProvider } = useWallet();
+  const { discoverWallets, connectToProvider, onWalletDisconnect } = useWallet();
   const [accounts, setAccounts] = useState<Aliased<AztecAddress>[]>([]);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
   const [accountsError, setAccountsError] = useState<string | null>(null);
@@ -60,6 +62,10 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
   // Wallet discovery and verification state
   const [connectionPhase, setConnectionPhase] = useState<WalletConnectionPhase>('discovering');
   const [discoveredWallets, setDiscoveredWallets] = useState<DiscoveredWalletWithEmoji[]>([]);
+  const [selectedWallet, setSelectedWallet] = useState<DiscoveredWalletWithEmoji | null>(null);
+
+  // Track if we need to re-discover due to wallet disconnect
+  const [needsRediscovery, setNeedsRediscovery] = useState(false);
 
   // Drip flow state
   const [password, setPassword] = useState('');
@@ -71,6 +77,24 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
   // Get steps from flow config
   const steps = currentFlow?.steps || [];
 
+  // Listen for unexpected wallet disconnection
+  useEffect(() => {
+    const unsubscribe = onWalletDisconnect(() => {
+      // Mark that we need to re-discover wallets (old MessagePorts are now invalid)
+      setNeedsRediscovery(true);
+      // Clear discovered wallets since they're now stale
+      setDiscoveredWallets([]);
+      setAccounts([]);
+      // Reset to discovering phase so user can reconnect
+      if (status === 'connecting_wallet') {
+        setConnectionPhase('discovering');
+        setAccountsError('Wallet disconnected. Please reconnect.');
+      }
+    });
+
+    return unsubscribe;
+  }, [onWalletDisconnect, status]);
+
   // Start wallet discovery when modal opens and status is connecting_wallet
   useEffect(() => {
     async function startWalletDiscovery() {
@@ -79,15 +103,17 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
       // Reset state when entering connecting_wallet phase
       setConnectionPhase('discovering');
       setDiscoveredWallets([]);
+      setSelectedWallet(null);
       setAccounts([]);
       setAccountsError(null);
       setIsLoadingAccounts(true);
+      setNeedsRediscovery(false);
 
       try {
         const wallets = await discoverWallets();
 
         if (wallets.length === 0) {
-          throw new Error('No wallet extensions found. Please install a compatible Aztec wallet extension.');
+          throw new Error('No wallets found');
         }
 
         setDiscoveredWallets(wallets);
@@ -102,17 +128,44 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
     startWalletDiscovery();
   }, [open, status, discoverWallets]);
 
+  // Handle manual re-discovery (e.g., after disconnect or user request)
+  const handleRediscover = async () => {
+    setConnectionPhase('discovering');
+    setDiscoveredWallets([]);
+    setSelectedWallet(null);
+    setAccounts([]);
+    setAccountsError(null);
+    setIsLoadingAccounts(true);
+    setNeedsRediscovery(false);
+
+    try {
+      const wallets = await discoverWallets();
+
+      if (wallets.length === 0) {
+        throw new Error('No wallets found.');
+      }
+
+      setDiscoveredWallets(wallets);
+      setConnectionPhase('verifying');
+      setIsLoadingAccounts(false);
+    } catch (err) {
+      setAccountsError(err instanceof Error ? err.message : 'Failed to discover wallets');
+      setIsLoadingAccounts(false);
+    }
+  };
+
   // Handle wallet selection after user verifies emoji
   const handleWalletSelect = async (walletWithEmoji: DiscoveredWalletWithEmoji) => {
     try {
+      setSelectedWallet(walletWithEmoji);
       setConnectionPhase('connecting');
       setIsLoadingAccounts(true);
       setAccountsError(null);
 
-      const extensionWallet = await connectToProvider(walletWithEmoji.provider);
+      const wallet = await connectToProvider(walletWithEmoji.provider);
 
-      // Get accounts from extension wallet
-      const walletAccounts = await extensionWallet.getAccounts();
+      // Get accounts from wallet
+      const walletAccounts = await wallet.getAccounts();
 
       if (!walletAccounts || walletAccounts.length === 0) {
         throw new Error('No accounts found in wallet. Please create an account in your Aztec wallet.');
@@ -124,6 +177,7 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
     } catch (err) {
       setAccountsError(err instanceof Error ? err.message : 'Failed to connect to wallet');
       setConnectionPhase('verifying'); // Go back to wallet selection on error
+      setSelectedWallet(null);
       setIsLoadingAccounts(false);
     }
   };
@@ -184,9 +238,11 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
   const progress = (currentStep / totalSteps) * 100;
 
   // Show wallet verification UI when in verifying phase
-  const showWalletVerification = status === 'connecting_wallet' && connectionPhase === 'verifying' && discoveredWallets.length > 0;
+  const showWalletVerification =
+    status === 'connecting_wallet' && connectionPhase === 'verifying' && discoveredWallets.length > 0;
   // Show account selection UI when in selecting_account phase
-  const showAccountSelection = status === 'connecting_wallet' && connectionPhase === 'selecting_account' && accounts.length > 0;
+  const showAccountSelection =
+    status === 'connecting_wallet' && connectionPhase === 'selecting_account' && accounts.length > 0;
 
   // Show completion transition instead of steps when completed
   const showCompletionTransition = status === 'completed';
@@ -329,13 +385,19 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
                 severity="error"
                 sx={{ mb: 3 }}
                 action={
-                  <Typography
-                    variant="button"
-                    sx={{ cursor: 'pointer', textDecoration: 'underline' }}
-                    onClick={resetOnboarding}
-                  >
-                    Retry
-                  </Typography>
+                  needsRediscovery || accountsError?.includes('disconnected') ? (
+                    <Button size="small" color="inherit" startIcon={<RefreshIcon />} onClick={handleRediscover}>
+                      Reconnect
+                    </Button>
+                  ) : (
+                    <Typography
+                      variant="button"
+                      sx={{ cursor: 'pointer', textDecoration: 'underline' }}
+                      onClick={resetOnboarding}
+                    >
+                      Retry
+                    </Typography>
+                  )
                 }
               >
                 {error || accountsError}
@@ -444,7 +506,7 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
 
             {/* Wallet discovery, verification, and account selection below first step */}
             <Collapse in={status === 'connecting_wallet'} timeout={400}>
-              <Box sx={{ pl: 7, pr: 0, pb: 2 }}>
+              <Box sx={{ pl: 5, pr: 2, pb: 2 }}>
                 {isLoadingAccounts && connectionPhase === 'discovering' ? (
                   // Discovering wallets
                   <Box
@@ -458,39 +520,68 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
                     }}
                   >
                     <Typography variant="body2" color="text.secondary" textAlign="center">
-                      Discovering wallet extensions...
+                      Discovering wallets...
                     </Typography>
                   </Box>
-                ) : isLoadingAccounts && connectionPhase === 'connecting' ? (
-                  // Connecting to selected wallet
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      py: 2,
-                      gap: 2,
-                    }}
-                  >
-                    <Typography variant="body2" color="text.secondary" textAlign="center">
-                      Connecting to wallet...
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" textAlign="center">
-                      Please check your Aztec wallet
-                    </Typography>
-                  </Box>
-                ) : showWalletVerification ? (
-                  // Wallet verification step - show discovered wallets with emoji
+                ) : isLoadingAccounts && connectionPhase === 'connecting' && selectedWallet ? (
+                  // Connecting to selected wallet - show wallet info with emoji while loading
                   <>
                     <Box
                       sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 2,
+                        p: 2,
+                        border: '1px solid',
+                        borderColor: 'primary.main',
+                        borderRadius: 1,
+                        backgroundColor: 'rgba(212, 255, 40, 0.05)',
                         mb: 2,
+                      }}
+                    >
+                      {selectedWallet.provider.icon ? (
+                        <Box
+                          component="img"
+                          src={selectedWallet.provider.icon}
+                          alt={selectedWallet.provider.name}
+                          sx={{ width: 40, height: 40, borderRadius: 1 }}
+                        />
+                      ) : (
+                        <Box
+                          sx={{
+                            width: 40,
+                            height: 40,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                            borderRadius: 1,
+                          }}
+                        >
+                          <AccountBalanceWalletIcon sx={{ fontSize: 24, color: 'primary.main' }} />
+                        </Box>
+                      )}
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="body1" fontWeight={600}>
+                          {selectedWallet.provider.name}
+                        </Typography>
+                        {selectedWallet.verificationEmoji && (
+                          <Typography variant="body2" sx={{ letterSpacing: '0.15em', mt: 0.5 }}>
+                            {selectedWallet.verificationEmoji}
+                          </Typography>
+                        )}
+                      </Box>
+                      <CircularProgress size={24} sx={{ color: 'primary.main' }} />
+                    </Box>
+
+                    <Box
+                      sx={{
                         p: 1.5,
                         backgroundColor: 'rgba(33, 150, 243, 0.08)',
                         borderRadius: 1,
                         border: '1px solid',
                         borderColor: 'rgba(33, 150, 243, 0.3)',
+                        mb: 2,
                       }}
                     >
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
@@ -500,19 +591,43 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
                         </Typography>
                       </Box>
                       <Typography variant="caption" color="text.secondary">
-                        Verify the emoji code matches what your wallet is showing before connecting.
-                        This protects against man-in-the-middle attacks.
+                        Verify the emoji code matches what your wallet is showing.
                       </Typography>
                     </Box>
 
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                      Select your wallet after verifying the code:
+                    <Typography variant="body2" color="text.secondary" textAlign="center">
+                      Connecting and retrieving accounts...
                     </Typography>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      textAlign="center"
+                      sx={{ alignSelf: 'center', mt: 0.5 }}
+                    >
+                      Please approve the request in your wallet
+                    </Typography>
+                  </>
+                ) : showWalletVerification ? (
+                  // Wallet selection step - emojis hidden until user clicks
+                  <>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Select your wallet to connect:
+                      </Typography>
+                      <IconButton
+                        size="small"
+                        onClick={handleRediscover}
+                        title="Refresh wallet list"
+                        sx={{ color: 'text.secondary' }}
+                      >
+                        <RefreshIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
 
                     <Box sx={{ maxHeight: '240px', overflowY: 'auto' }}>
                       <List sx={{ pt: 0 }}>
                         {discoveredWallets.map(walletWithEmoji => {
-                          const { provider, verificationEmoji } = walletWithEmoji;
+                          const { provider } = walletWithEmoji;
 
                           return (
                             <ListItem key={provider.id} disablePadding sx={{ mb: 1 }}>
@@ -528,34 +643,35 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
                                   },
                                 }}
                               >
-                                {provider.icon && (
-                                  <ListItemIcon sx={{ minWidth: 48 }}>
+                                <ListItemIcon sx={{ minWidth: 48 }}>
+                                  {provider.icon ? (
                                     <Box
                                       component="img"
                                       src={provider.icon}
                                       alt={provider.name}
                                       sx={{ width: 32, height: 32, borderRadius: 1 }}
                                     />
-                                  </ListItemIcon>
-                                )}
+                                  ) : (
+                                    <Box
+                                      sx={{
+                                        width: 32,
+                                        height: 32,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                                        borderRadius: 1,
+                                      }}
+                                    >
+                                      <AccountBalanceWalletIcon sx={{ fontSize: 20, color: 'primary.main' }} />
+                                    </Box>
+                                  )}
+                                </ListItemIcon>
                                 <ListItemText
                                   primary={
                                     <Typography variant="body1" fontWeight={600}>
                                       {provider.name}
                                     </Typography>
-                                  }
-                                  secondary={
-                                    verificationEmoji && (
-                                      <Typography
-                                        variant="body2"
-                                        sx={{
-                                          mt: 0.5,
-                                          letterSpacing: '0.15em',
-                                        }}
-                                      >
-                                        {verificationEmoji}
-                                      </Typography>
-                                    )
                                   }
                                 />
                               </ListItemButton>

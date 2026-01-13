@@ -5,16 +5,16 @@
   "chainId": "11155111",
   "rollupVersion": "1647720761",
   "contracts": {
-    "gregoCoin": "0x2e4a942a91d15fedad3f8e8738382fc8ccb97532a37aae102fe8c33910747a44",
-    "gregoCoinPremium": "0x2f15c908d0a7554ba27a939bbb2ecd50f19c6933cb71016941964dae66a817f6",
-    "amm": "0x078b5b0464de86e3b6b68a5f6ba2fdcc07d0995c5de4f1a9c2ea8c8e8a93b0f7",
-    "liquidityToken": "0x12994f83cdaa3bd0ab345090f219e3e1fbc5218e3f714b45c5a77677bc0abb21",
-    "pop": "0x235f07190276c3a6f562c532cc75b44cca7487734817490eb8fdf382138afcf3",
+    "gregoCoin": "0x2c3caba1f7ffffbe1ccf49f786b3e28897fff23bad3b6e0fd87ed5435510fbec",
+    "gregoCoinPremium": "0x1cdaa36a7f1a2b40108da56a9198971c68c976b59c6f76fea902d45b0a8054ee",
+    "amm": "0x17123005f7aac43ef29857fc636caf033c4e33320f515986bd2ce1f682b71a85",
+    "liquidityToken": "0x081e10bdec59c2bcbce46f2a6431b9f467348031b68484d6090689703531df66",
+    "pop": "0x29e5eb00320b741798aeba2e31be9caedb55e912367d5446b994fded88ae5a8f",
     "sponsoredFPC": "0x1586f476995be97f07ebd415340a14be48dc28c6c661cc6bdddb80ae790caa4e",
-    "salt": "0x1b8de4413f8972cccae768f4f1810ecaf64cf416c7879a3585a2b2a705227cee"
+    "salt": "0x0391fb6693c062389f59b6ac2a25040e28506917d57b28d1b435da6ef476f9c8"
   },
   "deployer": {
-    "address": "0x13c06c5dd8a62b7446b2cc003245057e4d5ffd83257cd23afae391d9c06318c9"
+    "address": "0x0193eac067cfe92cc8042c5068053584d635abb9788a3cf767b4925b6f9c07bd"
   },
-  "deployedAt": "2026-01-09T06:47:29.421Z"
+  "deployedAt": "2026-01-13T11:19:18.223Z"
 }
