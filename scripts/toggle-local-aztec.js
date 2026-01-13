@@ -284,8 +284,7 @@ function cleanupBrokenAztecSymlinks(dir) {
   return cleaned;
 }
 
-function runYarnInstall() {
-  // First, clean up broken symlinks
+function cleanupSymlinks() {
   console.log("\nCleaning up stale @aztec symlinks...");
   const cleaned = cleanupBrokenAztecSymlinks(ROOT);
   if (cleaned > 0) {
@@ -293,13 +292,7 @@ function runYarnInstall() {
   } else {
     console.log("  No broken symlinks found");
   }
-
-  console.log("\nRunning yarn install...");
-  try {
-    execSync("yarn install", { cwd: ROOT, stdio: "inherit" });
-  } catch (error) {
-    console.error("Failed to run yarn install:", error.message);
-  }
+  console.log("\nRun 'yarn install' to complete the setup.");
 }
 
 function enable(aztecPath) {
@@ -342,8 +335,8 @@ function enable(aztecPath) {
   console.log(`\nLocal aztec-packages resolutions enabled.`);
   console.log(`Path: ${resolvedPath}`);
 
-  // Run yarn install
-  runYarnInstall();
+  // Clean up stale symlinks (yarn install is done separately)
+  cleanupSymlinks();
 }
 
 function disable() {
@@ -367,8 +360,8 @@ function disable() {
 
   console.log(`\nLocal aztec-packages resolutions disabled.`);
 
-  // Run yarn install
-  runYarnInstall();
+  // Clean up stale symlinks (yarn install is done separately)
+  cleanupSymlinks();
 }
 
 function status() {
