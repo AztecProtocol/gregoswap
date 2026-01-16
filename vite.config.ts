@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv, Plugin, ResolvedConfig } from 'vite';
+import { defineConfig, loadEnv, Plugin, ResolvedConfig, searchForWorkspaceRoot } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import { PolyfillOptions, nodePolyfills } from 'vite-plugin-node-polyfills';
 import fs from 'fs';
@@ -104,6 +104,9 @@ export default defineConfig(({ mode }) => {
         'Cross-Origin-Opener-Policy': 'same-origin',
         'Cross-Origin-Embedder-Policy': 'require-corp',
       },
+      fs: {
+        allow: [searchForWorkspaceRoot(process.cwd())],
+      },
     },
     optimizeDeps: {
       exclude: ['@aztec/noir-acvm_js', '@aztec/noir-noirc_abi'],
@@ -119,7 +122,7 @@ export default defineConfig(({ mode }) => {
         },
         {
           pattern: /.*/,
-          maxSizeKB: 7000,
+          maxSizeKB: 8000,
           description: 'Detect if json artifacts or bb.js wasm get out of control',
         },
       ]),

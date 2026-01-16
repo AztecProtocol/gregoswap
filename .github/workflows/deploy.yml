@@ -12,6 +12,10 @@ on:
 env:
   PASSWORD: ${{ secrets.PASSWORD }}
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -42,8 +46,6 @@ jobs:
       - name: Set Aztec version
         run: |
           aztec-up ${{ vars.VERSION }}
-          docker pull aztecprotocol/aztec:${{ vars.VERSION }}
-          docker tag aztecprotocol/aztec:${{ vars.VERSION }} aztecprotocol/aztec:latest
 
       - name: Compile contracts
         run: yarn compile:contracts
@@ -55,9 +57,10 @@ jobs:
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Deploy to Vercel
-        run: |
-          vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes
         id: deploy
+        run: |
+          DEPLOY_URL=$(vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes)
+          echo "url=$DEPLOY_URL" >> $GITHUB_OUTPUT
 
       - name: Comment deployment URL on PR
         if: github.event_name == 'pull_request'
@@ -68,5 +71,5 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '🚀 Deployed to Vercel!\n\nContracts deployed to devnet and website published.'
+              body: '🚀 Deployed to Vercel!\n\n**Preview URL:** ${{ steps.deploy.outputs.url }}'
             })

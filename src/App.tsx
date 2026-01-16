@@ -22,8 +22,8 @@ export function App() {
     startOnboardingFlow('swap'); // Default to swap flow when clicked from wallet chip
   };
 
-  const handleDisconnect = () => {
-    disconnectWallet();
+  const handleDisconnect = async () => {
+    await disconnectWallet();
     resetOnboarding();
   };
 

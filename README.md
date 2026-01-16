@@ -33,11 +33,10 @@ curl -s https://install.aztec.network | bash
 
 ### 3. Set Aztec Version
 
-The project uses Aztec version `v3.0.0-nightly.20251120`. Set it using:
+The project uses Aztec version `v3.0.0-devnet.6-patch.1`. Set it using:
 
 ```bash
-aztec-up 3.0.0-nightly.20251120
-docker tag aztecprotocol/aztec:3.0.0-nightly.20251120 aztecprotocol/aztec:latest # Temporary workaround for aztec-nargo issues
+aztec-up 3.0.0-devnet.6-patch.1
 ```
 
 ## Development Setup
@@ -49,7 +48,7 @@ docker tag aztecprotocol/aztec:3.0.0-nightly.20251120 aztecprotocol/aztec:latest
 In a separate terminal, start the local Aztec sandbox:
 
 ```bash
-aztec start --sandbox
+aztec start --local-network
 ```
 
 This will start a local Aztec node on `http://localhost:8080`.

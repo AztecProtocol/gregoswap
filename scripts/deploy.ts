@@ -11,11 +11,12 @@ import { deriveSigningKey } from '@aztec/stdlib/keys';
 import { AztecAddress } from '@aztec/stdlib/aztec-address';
 import { createAztecNodeClient, type AztecNode } from '@aztec/aztec.js/node';
 import { getContractInstanceFromInstantiationParams } from '@aztec/stdlib/contract';
-import { Fr } from '@aztec/foundation/fields';
+import { Fr } from '@aztec/foundation/curves/bn254';
 import type { DeployAccountOptions } from '@aztec/aztec.js/wallet';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 
 import { ProofOfPasswordContract } from '../contracts/target/ProofOfPassword.ts';
+import { createLogger } from '@aztec/foundation/log';
 
 // Parse network from CLI args (--network <name>)
 function getNetworkFromArgs(): string {
@@ -38,7 +39,7 @@ const NETWORK = getNetworkFromArgs();
 // Network-specific node URLs (hardcoded, not configurable)
 const NETWORK_URLS: Record<string, string> = {
   local: 'http://localhost:8080',
-  devnet: 'https://devnet.aztec-labs.com',
+  devnet: 'https://next.devnet.aztec-labs.com',
 };
 
 const AZTEC_NODE_URL = NETWORK_URLS[NETWORK];
@@ -61,7 +62,11 @@ async function setupWallet(aztecNode: AztecNode) {
   config.dataDirectory = PXE_STORE_DIR;
   config.proverEnabled = PROVER_ENABLED;
 
-  return await TestWallet.create(aztecNode, config);
+  return await TestWallet.create(aztecNode, config, {
+    proverOrOptions: {
+      logger: createLogger('bb:native'),
+    },
+  });
 }
 
 async function getSponsoredPFCContract() {

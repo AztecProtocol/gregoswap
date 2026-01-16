@@ -48,12 +48,12 @@ pub contract ProofOfPassword {
         );
 
         // Safety: PXE will enforce a sender for the tags of the notes created
-        // in the Token.mint function, but this one intented to be called by anyone
-        // that knows the passord, not necessarily the recipient. Chances are this fn
+        // in the Token.mint function, but this particular function is intended to be called by anyone
+        // that knows the password, not necessarily the recipient. In particular, chances are this fn
         // will be invoked by the MultiCallEntrypoint protocol contract,
         // which does not set a sender for tags.
         // We intend the "to" of this function to claim the notes, so we're just calling
-        // the oracle for its sideeffects, making it safe to call
+        // the oracle for its side effects, therefore making it safe to call
         unsafe {
             set_sender_for_tags(to);
         }
@@ -61,7 +61,7 @@ pub contract ProofOfPassword {
         let address = self.storage.grego_coin_address.read();
         self.call(Token::at(address).mint_to_private(to, 1000));
 
-        // Derive nullifier from sender and password. This is still a privacy leak, since
+        // Derive nullifier from sender and password. This is a privacy leak, since
         // knowing the password and an address is sufficient to know if someone has used this
         // contract or not. But at least, they need the password
         let nullifier = poseidon2_hash([to.to_field(), field_compressed_str.serialize()[0]]);
