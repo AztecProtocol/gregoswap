@@ -182,8 +182,8 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         await wallet.batch([
           { name: 'registerContract', args: [ammInstance, AMMContractArtifact, undefined] },
           { name: 'registerContract', args: [gregoCoinInstance, TokenContractArtifact, undefined] },
-          { name: 'registerContract', args: [gregoCoinPremiumInstance, TokenContractArtifact, undefined] },
-        ] as unknown as any);
+          { name: 'registerContract', args: [gregoCoinPremiumInstance, undefined, undefined] },
+        ]);
 
         // After registration, instantiate the contracts
         const gregoCoinContract = TokenContract.at(gregoCoinAddress, wallet);
