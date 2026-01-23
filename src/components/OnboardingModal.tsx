@@ -108,6 +108,9 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
   // Track if we need to re-discover due to wallet disconnect
   const [needsRediscovery, setNeedsRediscovery] = useState(false);
 
+  // Track wallets whose connections were cancelled (port is now closed)
+  const [cancelledWalletIds, setCancelledWalletIds] = useState<Set<string>>(new Set());
+
   // Drip flow state
   const [password, setPassword] = useState('');
 
@@ -148,6 +151,7 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
     setAccounts([]);
     setAccountsError(null);
     setNeedsRediscovery(false);
+    setCancelledWalletIds(new Set());
 
     const discovery = discoverWallets();
 
@@ -182,6 +186,7 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
     setAccounts([]);
     setAccountsError(null);
     setNeedsRediscovery(false);
+    setCancelledWalletIds(new Set()); // Reset cancelled wallets on rediscovery
 
     const discovery = discoverWallets();
     let foundAny = false;
@@ -248,6 +253,10 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
   const handleCancelConnection = () => {
     if (pendingConnection) {
       cancelConnection(pendingConnection);
+    }
+    // Mark this wallet as cancelled - port is now closed, cannot retry without rediscovery
+    if (selectedWallet) {
+      setCancelledWalletIds(prev => new Set(prev).add(selectedWallet.id));
     }
     setPendingConnection(null);
     setSelectedWallet(null);
@@ -696,54 +705,80 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
 
                     <Box sx={{ maxHeight: '240px', overflowY: 'auto' }}>
                       <List sx={{ pt: 0 }}>
-                        {discoveredWallets.map(provider => (
-                          <ListItem key={provider.id} disablePadding sx={{ mb: 1 }}>
-                            <ListItemButton
-                              onClick={() => handleWalletSelect(provider)}
-                              sx={{
-                                border: '1px solid',
-                                borderColor: 'divider',
-                                borderRadius: 1,
-                                '&:hover': {
-                                  borderColor: 'primary.main',
-                                  backgroundColor: 'rgba(212, 255, 40, 0.05)',
-                                },
-                              }}
-                            >
-                              <ListItemIcon sx={{ minWidth: 48 }}>
-                                {provider.icon ? (
-                                  <Box
-                                    component="img"
-                                    src={provider.icon}
-                                    alt={provider.name}
-                                    sx={{ width: 32, height: 32, borderRadius: 1 }}
-                                  />
-                                ) : (
-                                  <Box
-                                    sx={{
-                                      width: 32,
-                                      height: 32,
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                                      borderRadius: 1,
-                                    }}
-                                  >
-                                    <AccountBalanceWalletIcon sx={{ fontSize: 20, color: 'primary.main' }} />
-                                  </Box>
-                                )}
-                              </ListItemIcon>
-                              <ListItemText
-                                primary={
-                                  <Typography variant="body1" fontWeight={600}>
-                                    {provider.name}
-                                  </Typography>
-                                }
-                              />
-                            </ListItemButton>
-                          </ListItem>
-                        ))}
+                        {discoveredWallets.map(provider => {
+                          const isCancelled = cancelledWalletIds.has(provider.id);
+                          return (
+                            <ListItem key={provider.id} disablePadding sx={{ mb: 1 }}>
+                              <ListItemButton
+                                onClick={() => handleWalletSelect(provider)}
+                                disabled={isCancelled}
+                                sx={{
+                                  border: '1px solid',
+                                  borderColor: isCancelled ? 'divider' : 'divider',
+                                  borderRadius: 1,
+                                  opacity: isCancelled ? 0.5 : 1,
+                                  '&:hover': {
+                                    borderColor: isCancelled ? 'divider' : 'primary.main',
+                                    backgroundColor: isCancelled ? 'transparent' : 'rgba(212, 255, 40, 0.05)',
+                                  },
+                                  '&.Mui-disabled': {
+                                    opacity: 0.5,
+                                  },
+                                }}
+                              >
+                                <ListItemIcon sx={{ minWidth: 48 }}>
+                                  {provider.icon ? (
+                                    <Box
+                                      component="img"
+                                      src={provider.icon}
+                                      alt={provider.name}
+                                      sx={{
+                                        width: 32,
+                                        height: 32,
+                                        borderRadius: 1,
+                                        filter: isCancelled ? 'grayscale(100%)' : 'none',
+                                      }}
+                                    />
+                                  ) : (
+                                    <Box
+                                      sx={{
+                                        width: 32,
+                                        height: 32,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                                        borderRadius: 1,
+                                      }}
+                                    >
+                                      <AccountBalanceWalletIcon
+                                        sx={{ fontSize: 20, color: isCancelled ? 'text.disabled' : 'primary.main' }}
+                                      />
+                                    </Box>
+                                  )}
+                                </ListItemIcon>
+                                <ListItemText
+                                  primary={
+                                    <Typography
+                                      variant="body1"
+                                      fontWeight={600}
+                                      color={isCancelled ? 'text.disabled' : 'text.primary'}
+                                    >
+                                      {provider.name}
+                                    </Typography>
+                                  }
+                                  secondary={
+                                    isCancelled ? (
+                                      <Typography variant="caption" color="text.disabled">
+                                        Connection cancelled - refresh to retry
+                                      </Typography>
+                                    ) : undefined
+                                  }
+                                />
+                              </ListItemButton>
+                            </ListItem>
+                          );
+                        })}
                       </List>
                     </Box>
                   </>

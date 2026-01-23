@@ -67,6 +67,9 @@ export function WalletProvider({ children }: WalletProviderProps) {
   const currentProviderRef = useRef<WalletProviderType | null>(null);
   const providerDisconnectUnsubscribeRef = useRef<(() => void) | null>(null);
 
+  // Track active discovery session to auto-cancel on new discovery
+  const activeDiscoveryRef = useRef<DiscoverySession | null>(null);
+
   // Callbacks registered by consumers to be notified of unexpected disconnects
   const disconnectCallbacksRef = useRef<Set<WalletDisconnectCallback>>(new Set());
 
@@ -163,20 +166,29 @@ export function WalletProvider({ children }: WalletProviderProps) {
 
   /**
    * Discovers wallets. Returns a DiscoverySession with wallets iterator and cancel().
+   * Automatically cancels any previous discovery session.
    */
   const discoverWallets = useCallback(
     (timeout?: number): DiscoverySession => {
+      // Cancel any existing discovery before starting a new one
+      if (activeDiscoveryRef.current) {
+        activeDiscoveryRef.current.cancel();
+      }
+
       const chainInfo: ChainInfo = {
         chainId: Fr.fromString(activeNetwork.chainId),
         version: Fr.fromString(activeNetwork.rollupVersion),
       };
 
       const manager = WalletManager.configure({ extensions: { enabled: true } });
-      return manager.getAvailableWallets({
+      const discovery = manager.getAvailableWallets({
         chainInfo,
         appId: 'gregoswap',
         timeout,
       });
+
+      activeDiscoveryRef.current = discovery;
+      return discovery;
     },
     [activeNetwork],
   );
