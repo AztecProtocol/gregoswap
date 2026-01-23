@@ -27,13 +27,20 @@ import CloseIcon from '@mui/icons-material/Close';
 import ErrorIcon from '@mui/icons-material/Error';
 import SecurityIcon from '@mui/icons-material/Security';
 import { useOnboarding } from '../contexts/OnboardingContext';
-import { useWallet, type DiscoveredWalletWithEmoji } from '../contexts/WalletContext';
+import { useWallet } from '../contexts/WalletContext';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { Aliased } from '@aztec/aztec.js/wallet';
+import type { WalletProvider, PendingConnection } from '@aztec/wallet-sdk/manager';
+import { hashToEmoji } from '@aztec/wallet-sdk/crypto';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 
-type WalletConnectionPhase = 'discovering' | 'verifying' | 'connecting' | 'selecting_account';
+/** Computes verification emoji from provider metadata */
+function getVerificationEmoji(provider: WalletProvider): string {
+  return provider.metadata?.verificationHash ? hashToEmoji(provider.metadata.verificationHash as string) : '';
+}
+
+type WalletConnectionPhase = 'discovering' | 'selecting_wallet' | 'verifying' | 'connecting' | 'selecting_account';
 
 interface OnboardingModalProps {
   open: boolean;
@@ -54,15 +61,16 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
     isSwapPending,
     isDripPending,
   } = useOnboarding();
-  const { discoverWallets, connectToProvider, onWalletDisconnect } = useWallet();
+  const { discoverWallets, initiateConnection, confirmConnection, cancelConnection, onWalletDisconnect } = useWallet();
   const [accounts, setAccounts] = useState<Aliased<AztecAddress>[]>([]);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
   const [accountsError, setAccountsError] = useState<string | null>(null);
 
   // Wallet discovery and verification state
   const [connectionPhase, setConnectionPhase] = useState<WalletConnectionPhase>('discovering');
-  const [discoveredWallets, setDiscoveredWallets] = useState<DiscoveredWalletWithEmoji[]>([]);
-  const [selectedWallet, setSelectedWallet] = useState<DiscoveredWalletWithEmoji | null>(null);
+  const [discoveredWallets, setDiscoveredWallets] = useState<WalletProvider[]>([]);
+  const [selectedWallet, setSelectedWallet] = useState<WalletProvider | null>(null);
+  const [pendingConnection, setPendingConnection] = useState<PendingConnection | null>(null);
 
   // Track if we need to re-discover due to wallet disconnect
   const [needsRediscovery, setNeedsRediscovery] = useState(false);
@@ -97,72 +105,91 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
 
   // Start wallet discovery when modal opens and status is connecting_wallet
   useEffect(() => {
-    async function startWalletDiscovery() {
-      if (!open || status !== 'connecting_wallet') return;
+    if (!open || status !== 'connecting_wallet') return;
 
-      // Reset state when entering connecting_wallet phase
-      setConnectionPhase('discovering');
-      setDiscoveredWallets([]);
-      setSelectedWallet(null);
-      setAccounts([]);
-      setAccountsError(null);
-      setIsLoadingAccounts(true);
-      setNeedsRediscovery(false);
-
-      try {
-        const wallets = await discoverWallets();
-
-        if (wallets.length === 0) {
-          throw new Error('No wallets found');
-        }
-
-        setDiscoveredWallets(wallets);
-        setConnectionPhase('verifying');
-        setIsLoadingAccounts(false);
-      } catch (err) {
-        setAccountsError(err instanceof Error ? err.message : 'Failed to discover wallets');
-        setIsLoadingAccounts(false);
-      }
-    }
-
-    startWalletDiscovery();
-  }, [open, status, discoverWallets]);
-
-  // Handle manual re-discovery (e.g., after disconnect or user request)
-  const handleRediscover = async () => {
+    // Reset state
     setConnectionPhase('discovering');
     setDiscoveredWallets([]);
     setSelectedWallet(null);
+    setPendingConnection(null);
     setAccounts([]);
     setAccountsError(null);
-    setIsLoadingAccounts(true);
     setNeedsRediscovery(false);
 
-    try {
-      const wallets = await discoverWallets();
+    let cancelled = false;
 
-      if (wallets.length === 0) {
-        throw new Error('No wallets found.');
+    (async () => {
+      let foundAny = false;
+      for await (const wallet of discoverWallets()) {
+        if (cancelled) break;
+        foundAny = true;
+        setConnectionPhase('selecting_wallet');
+        setDiscoveredWallets(prev => [...prev, wallet]);
       }
+      if (!cancelled && !foundAny) {
+        setAccountsError('No wallets found. Make sure your wallet extension is installed.');
+      }
+    })();
 
-      setDiscoveredWallets(wallets);
-      setConnectionPhase('verifying');
-      setIsLoadingAccounts(false);
-    } catch (err) {
-      setAccountsError(err instanceof Error ? err.message : 'Failed to discover wallets');
-      setIsLoadingAccounts(false);
+    return () => {
+      cancelled = true;
+    };
+  }, [open, status, discoverWallets]);
+
+  // Handle manual re-discovery
+  const handleRediscover = async () => {
+    // Cancel any pending connection
+    if (pendingConnection) {
+      cancelConnection(pendingConnection);
+    }
+
+    setConnectionPhase('discovering');
+    setDiscoveredWallets([]);
+    setSelectedWallet(null);
+    setPendingConnection(null);
+    setAccounts([]);
+    setAccountsError(null);
+    setNeedsRediscovery(false);
+
+    let foundAny = false;
+    for await (const wallet of discoverWallets()) {
+      foundAny = true;
+      setConnectionPhase('selecting_wallet');
+      setDiscoveredWallets(prev => [...prev, wallet]);
+    }
+
+    if (!foundAny) {
+      setAccountsError('No wallets found. Make sure your wallet extension is installed.');
     }
   };
 
-  // Handle wallet selection after user verifies emoji
-  const handleWalletSelect = async (walletWithEmoji: DiscoveredWalletWithEmoji) => {
+  // Handle wallet selection - initiates connection and shows verification UI
+  const handleWalletSelect = async (provider: WalletProvider) => {
     try {
-      setSelectedWallet(walletWithEmoji);
-      setConnectionPhase('connecting');
-      setIsLoadingAccounts(true);
+      setSelectedWallet(provider);
+      setConnectionPhase('verifying');
       setAccountsError(null);
 
-      const wallet = await connectToProvider(walletWithEmoji.provider);
+      // Initiate connection - this performs key exchange and returns pending connection
+      const pending = await initiateConnection(provider);
+      setPendingConnection(pending);
+    } catch (err) {
+      setAccountsError(err instanceof Error ? err.message : 'Failed to initiate connection');
+      setConnectionPhase('selecting_wallet');
+      setSelectedWallet(null);
+      setPendingConnection(null);
+    }
+  };
+
+  // Handle user confirming the emoji verification
+  const handleConfirmConnection = async () => {
+    if (!selectedWallet || !pendingConnection) return;
+
+    try {
+      setConnectionPhase('connecting');
+      setIsLoadingAccounts(true);
+
+      const wallet = await confirmConnection(selectedWallet, pendingConnection);
 
       // Get accounts from wallet
       const walletAccounts = await wallet.getAccounts();
@@ -174,12 +201,24 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
       setAccounts(walletAccounts);
       setConnectionPhase('selecting_account');
       setIsLoadingAccounts(false);
+      setPendingConnection(null);
     } catch (err) {
       setAccountsError(err instanceof Error ? err.message : 'Failed to connect to wallet');
-      setConnectionPhase('verifying'); // Go back to wallet selection on error
+      setConnectionPhase('selecting_wallet');
       setSelectedWallet(null);
+      setPendingConnection(null);
       setIsLoadingAccounts(false);
     }
+  };
+
+  // Handle user canceling the connection (emojis don't match)
+  const handleCancelConnection = () => {
+    if (pendingConnection) {
+      cancelConnection(pendingConnection);
+    }
+    setPendingConnection(null);
+    setSelectedWallet(null);
+    setConnectionPhase('selecting_wallet');
   };
 
   // Handle completion animation and auto-close
@@ -237,9 +276,12 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
   const isLoading = status !== 'not_started' && status !== 'completed' && status !== 'error';
   const progress = (currentStep / totalSteps) * 100;
 
-  // Show wallet verification UI when in verifying phase
-  const showWalletVerification =
-    status === 'connecting_wallet' && connectionPhase === 'verifying' && discoveredWallets.length > 0;
+  // Show wallet selection UI when wallets are discovered
+  const showWalletSelection =
+    status === 'connecting_wallet' && connectionPhase === 'selecting_wallet' && discoveredWallets.length > 0;
+  // Show emoji verification UI when connection is pending
+  const showEmojiVerification =
+    status === 'connecting_wallet' && connectionPhase === 'verifying' && pendingConnection !== null;
   // Show account selection UI when in selecting_account phase
   const showAccountSelection =
     status === 'connecting_wallet' && connectionPhase === 'selecting_account' && accounts.length > 0;
@@ -539,11 +581,11 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
                         mb: 2,
                       }}
                     >
-                      {selectedWallet.provider.icon ? (
+                      {selectedWallet.icon ? (
                         <Box
                           component="img"
-                          src={selectedWallet.provider.icon}
-                          alt={selectedWallet.provider.name}
+                          src={selectedWallet.icon}
+                          alt={selectedWallet.name}
                           sx={{ width: 40, height: 40, borderRadius: 1 }}
                         />
                       ) : (
@@ -563,11 +605,11 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
                       )}
                       <Box sx={{ flex: 1 }}>
                         <Typography variant="body1" fontWeight={600}>
-                          {selectedWallet.provider.name}
+                          {selectedWallet.name}
                         </Typography>
-                        {selectedWallet.verificationEmoji && (
+                        {getVerificationEmoji(selectedWallet) && (
                           <Typography variant="body2" sx={{ letterSpacing: '0.15em', mt: 0.5 }}>
-                            {selectedWallet.verificationEmoji}
+                            {getVerificationEmoji(selectedWallet)}
                           </Typography>
                         )}
                       </Box>
@@ -607,8 +649,8 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
                       Please approve the request in your wallet
                     </Typography>
                   </>
-                ) : showWalletVerification ? (
-                  // Wallet selection step - emojis hidden until user clicks
+                ) : showWalletSelection ? (
+                  // Wallet selection step
                   <>
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
                       <Typography variant="body2" color="text.secondary">
@@ -626,59 +668,142 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
 
                     <Box sx={{ maxHeight: '240px', overflowY: 'auto' }}>
                       <List sx={{ pt: 0 }}>
-                        {discoveredWallets.map(walletWithEmoji => {
-                          const { provider } = walletWithEmoji;
-
-                          return (
-                            <ListItem key={provider.id} disablePadding sx={{ mb: 1 }}>
-                              <ListItemButton
-                                onClick={() => handleWalletSelect(walletWithEmoji)}
-                                sx={{
-                                  border: '1px solid',
-                                  borderColor: 'divider',
-                                  borderRadius: 1,
-                                  '&:hover': {
-                                    borderColor: 'primary.main',
-                                    backgroundColor: 'rgba(212, 255, 40, 0.05)',
-                                  },
-                                }}
-                              >
-                                <ListItemIcon sx={{ minWidth: 48 }}>
-                                  {provider.icon ? (
-                                    <Box
-                                      component="img"
-                                      src={provider.icon}
-                                      alt={provider.name}
-                                      sx={{ width: 32, height: 32, borderRadius: 1 }}
-                                    />
-                                  ) : (
-                                    <Box
-                                      sx={{
-                                        width: 32,
-                                        height: 32,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                                        borderRadius: 1,
-                                      }}
-                                    >
-                                      <AccountBalanceWalletIcon sx={{ fontSize: 20, color: 'primary.main' }} />
-                                    </Box>
-                                  )}
-                                </ListItemIcon>
-                                <ListItemText
-                                  primary={
-                                    <Typography variant="body1" fontWeight={600}>
-                                      {provider.name}
-                                    </Typography>
-                                  }
-                                />
-                              </ListItemButton>
-                            </ListItem>
-                          );
-                        })}
+                        {discoveredWallets.map(provider => (
+                          <ListItem key={provider.id} disablePadding sx={{ mb: 1 }}>
+                            <ListItemButton
+                              onClick={() => handleWalletSelect(provider)}
+                              sx={{
+                                border: '1px solid',
+                                borderColor: 'divider',
+                                borderRadius: 1,
+                                '&:hover': {
+                                  borderColor: 'primary.main',
+                                  backgroundColor: 'rgba(212, 255, 40, 0.05)',
+                                },
+                              }}
+                            >
+                              <ListItemIcon sx={{ minWidth: 48 }}>
+                                {provider.icon ? (
+                                  <Box
+                                    component="img"
+                                    src={provider.icon}
+                                    alt={provider.name}
+                                    sx={{ width: 32, height: 32, borderRadius: 1 }}
+                                  />
+                                ) : (
+                                  <Box
+                                    sx={{
+                                      width: 32,
+                                      height: 32,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                                      borderRadius: 1,
+                                    }}
+                                  >
+                                    <AccountBalanceWalletIcon sx={{ fontSize: 20, color: 'primary.main' }} />
+                                  </Box>
+                                )}
+                              </ListItemIcon>
+                              <ListItemText
+                                primary={
+                                  <Typography variant="body1" fontWeight={600}>
+                                    {provider.name}
+                                  </Typography>
+                                }
+                              />
+                            </ListItemButton>
+                          </ListItem>
+                        ))}
                       </List>
+                    </Box>
+                  </>
+                ) : showEmojiVerification && selectedWallet && pendingConnection ? (
+                  // Emoji verification step - user must confirm emojis match
+                  <>
+                    <Box
+                      sx={{
+                        p: 2,
+                        border: '1px solid',
+                        borderColor: 'primary.main',
+                        borderRadius: 1,
+                        backgroundColor: 'rgba(212, 255, 40, 0.05)',
+                        mb: 2,
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                        {selectedWallet.icon ? (
+                          <Box
+                            component="img"
+                            src={selectedWallet.icon}
+                            alt={selectedWallet.name}
+                            sx={{ width: 40, height: 40, borderRadius: 1 }}
+                          />
+                        ) : (
+                          <Box
+                            sx={{
+                              width: 40,
+                              height: 40,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                              borderRadius: 1,
+                            }}
+                          >
+                            <AccountBalanceWalletIcon sx={{ fontSize: 24, color: 'primary.main' }} />
+                          </Box>
+                        )}
+                        <Typography variant="body1" fontWeight={600}>
+                          {selectedWallet.name}
+                        </Typography>
+                      </Box>
+
+                      {/* Verification emoji display */}
+                      <Box
+                        sx={{
+                          p: 2,
+                          backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                          borderRadius: 1,
+                          textAlign: 'center',
+                        }}
+                      >
+                        <Typography variant="h4" sx={{ letterSpacing: '0.3em', mb: 1 }}>
+                          {hashToEmoji(pendingConnection.verificationHash)}
+                        </Typography>
+                      </Box>
+                    </Box>
+
+                    <Box
+                      sx={{
+                        p: 1.5,
+                        backgroundColor: 'rgba(33, 150, 243, 0.08)',
+                        borderRadius: 1,
+                        border: '1px solid',
+                        borderColor: 'rgba(33, 150, 243, 0.3)',
+                        mb: 2,
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                        <SecurityIcon sx={{ fontSize: 18, color: 'info.main' }} />
+                        <Typography variant="body2" fontWeight={600} color="info.main">
+                          Security Verification
+                        </Typography>
+                      </Box>
+                      <Typography variant="caption" color="text.secondary">
+                        Verify the emoji code above matches what your wallet is showing. If they don't match, click
+                        "Cancel" - someone may be trying to intercept your connection.
+                      </Typography>
+                    </Box>
+
+                    <Box sx={{ display: 'flex', gap: 2 }}>
+                      <Button variant="outlined" color="inherit" onClick={handleCancelConnection} sx={{ flex: 1 }}>
+                        Cancel
+                      </Button>
+                      <Button variant="contained" color="primary" onClick={handleConfirmConnection} sx={{ flex: 1 }}>
+                        Emojis Match
+                      </Button>
                     </Box>
                   </>
                 ) : showAccountSelection ? (

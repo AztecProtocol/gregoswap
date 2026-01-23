@@ -6,16 +6,7 @@ import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ChainInfo } from '@aztec/aztec.js/account';
 import { useNetwork } from './NetworkContext';
 import { Fr } from '@aztec/aztec.js/fields';
-import { WalletManager, type WalletProvider as WalletProviderType } from '@aztec/wallet-sdk/manager';
-import { hashToEmoji } from '@aztec/wallet-sdk/crypto';
-
-/**
- * Discovered wallet with verification emoji for anti-MITM protection
- */
-export interface DiscoveredWalletWithEmoji {
-  provider: WalletProviderType;
-  verificationEmoji: string;
-}
+import { WalletManager, type WalletProvider as WalletProviderType, type PendingConnection } from '@aztec/wallet-sdk/manager';
 
 /**
  * Callback type for wallet disconnect events
@@ -29,15 +20,17 @@ interface WalletContextType {
   isLoading: boolean;
   error: string | null;
   isUsingEmbeddedWallet: boolean;
-  /** Discovers available wallet extensions with verification emojis */
-  discoverWallets: () => Promise<DiscoveredWalletWithEmoji[]>;
-  /** Connects to a specific wallet provider (after user verifies emoji) */
-  connectToProvider: (provider: WalletProviderType) => Promise<Wallet>;
-  /** Legacy: discovers and connects to first available wallet (no verification) */
-  connectWallet: () => Promise<Wallet>;
+  /** Discovers wallets via async iterator. Yields providers as users approve them. */
+  discoverWallets: (timeout?: number) => AsyncIterable<WalletProviderType>;
+  /** Initiates connection to a wallet provider. Returns PendingConnection for user verification. */
+  initiateConnection: (provider: WalletProviderType) => Promise<PendingConnection>;
+  /** Confirms a pending connection after user verifies the emoji. Returns the Wallet. */
+  confirmConnection: (provider: WalletProviderType, pendingConnection: PendingConnection) => Promise<Wallet>;
+  /** Cancels a pending connection. */
+  cancelConnection: (pendingConnection: PendingConnection) => void;
   setCurrentAddress: (address: AztecAddress | null) => void;
   disconnectWallet: () => Promise<void>;
-  /** Register a callback to be notified when the wallet unexpectedly disconnects */
+  /** Register a callback for unexpected wallet disconnects */
   onWalletDisconnect: (callback: WalletDisconnectCallback) => () => void;
 }
 
@@ -169,32 +162,30 @@ export function WalletProvider({ children }: WalletProviderProps) {
   }, []);
 
   /**
-   * Discovers available wallet extensions and returns them with verification emojis.
-   * The emoji is derived from the ECDH shared secret - both dApp and wallet compute
-   * the same emoji independently, allowing users to verify no MITM attack.
+   * Discovers wallets via async iterator. Yields providers as users approve them.
    */
-  const discoverWallets = useCallback(async (): Promise<DiscoveredWalletWithEmoji[]> => {
-    const chainInfo: ChainInfo = {
-      chainId: Fr.fromString(activeNetwork.chainId),
-      version: Fr.fromString(activeNetwork.rollupVersion),
-    };
+  const discoverWallets = useCallback(
+    (timeout?: number): AsyncIterable<WalletProviderType> => {
+      const chainInfo: ChainInfo = {
+        chainId: Fr.fromString(activeNetwork.chainId),
+        version: Fr.fromString(activeNetwork.rollupVersion),
+      };
 
-    const manager = WalletManager.configure({ extensions: { enabled: true } });
-    const providers = await manager.getAvailableWallets({ chainInfo, timeout: 2000 });
-
-    // Map providers to include verification emoji
-    return providers.map(provider => ({
-      provider,
-      verificationEmoji: provider.metadata.verificationHash
-        ? hashToEmoji(provider.metadata.verificationHash as string)
-        : '',
-    }));
-  }, [activeNetwork]);
+      const manager = WalletManager.configure({ extensions: { enabled: true } });
+      return manager.getAvailableWallets({
+        chainInfo,
+        appId: 'gregoswap',
+        timeout,
+      });
+    },
+    [activeNetwork],
+  );
 
   /**
-   * Connects to a specific wallet provider after user has verified the emoji.
+   * Initiates connection to a wallet provider.
+   * Returns a PendingConnection with verification hash for user to verify emojis.
    */
-  const connectToProvider = useCallback(async (provider: WalletProviderType): Promise<Wallet> => {
+  const initiateConnection = useCallback(async (provider: WalletProviderType): Promise<PendingConnection> => {
     // Disconnect from previous provider if any
     if (currentProviderRef.current && currentProviderRef.current.disconnect) {
       // Unsubscribe from previous disconnect callback
@@ -210,7 +201,16 @@ export function WalletProvider({ children }: WalletProviderProps) {
     }
 
     const appId = 'gregoswap';
-    const extensionWallet = await provider.connect(appId);
+    const pendingConnection = await provider.establishSecureChannel(appId);
+    return pendingConnection;
+  }, []);
+
+  /**
+   * Confirms a pending connection after user verifies the emoji matches.
+   * Returns the connected Wallet.
+   */
+  const confirmConnection = useCallback(async (provider: WalletProviderType, pendingConnection: PendingConnection): Promise<Wallet> => {
+    const extensionWallet = await pendingConnection.confirm();
 
     // Store provider reference
     currentProviderRef.current = provider;
@@ -231,19 +231,11 @@ export function WalletProvider({ children }: WalletProviderProps) {
   }, [handleUnexpectedDisconnect]);
 
   /**
-   * Legacy: discovers and connects to first available wallet (no verification step).
-   * Kept for backwards compatibility.
+   * Cancels a pending connection if user doesn't verify or wants to abort.
    */
-  const connectWallet = useCallback(async (): Promise<Wallet> => {
-    const wallets = await discoverWallets();
-
-    if (wallets.length === 0) {
-      throw new Error('No wallet extensions found. Please install a compatible Aztec wallet extension.');
-    }
-
-    // Connect to the first available wallet provider
-    return connectToProvider(wallets[0].provider);
-  }, [discoverWallets, connectToProvider]);
+  const cancelConnection = useCallback((pendingConnection: PendingConnection): void => {
+    pendingConnection.cancel();
+  }, []);
 
   const disconnectWallet = useCallback(async () => {
     // Unsubscribe from disconnect callback before disconnecting
@@ -299,8 +291,9 @@ export function WalletProvider({ children }: WalletProviderProps) {
     error,
     isUsingEmbeddedWallet,
     discoverWallets,
-    connectToProvider,
-    connectWallet,
+    initiateConnection,
+    confirmConnection,
+    cancelConnection,
     setCurrentAddress,
     disconnectWallet,
     onWalletDisconnect,
