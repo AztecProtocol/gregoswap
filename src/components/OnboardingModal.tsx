@@ -40,6 +40,39 @@ function getVerificationEmoji(provider: WalletProvider): string {
   return provider.metadata?.verificationHash ? hashToEmoji(provider.metadata.verificationHash as string) : '';
 }
 
+/**
+ * Renders a 3x3 emoji grid for verification display.
+ */
+function EmojiGrid({ emojis, size = 'medium' }: { emojis: string; size?: 'small' | 'medium' | 'large' }) {
+  const emojiArray = [...emojis];
+  const rows = [emojiArray.slice(0, 3), emojiArray.slice(3, 6), emojiArray.slice(6, 9)];
+  const fontSize = size === 'small' ? '0.9rem' : size === 'large' ? '1.8rem' : '1.4rem';
+
+  return (
+    <Box sx={{ display: 'inline-flex', flexDirection: 'column', gap: '2px' }}>
+      {rows.map((row, i) => (
+        <Box key={i} sx={{ display: 'flex', gap: '2px' }}>
+          {row.map((emoji, j) => (
+            <Box
+              key={j}
+              sx={{
+                fontSize,
+                width: '1.2em',
+                height: '1.2em',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {emoji}
+            </Box>
+          ))}
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
 type WalletConnectionPhase = 'discovering' | 'selecting_wallet' | 'verifying' | 'connecting' | 'selecting_account';
 
 interface OnboardingModalProps {
@@ -116,23 +149,22 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
     setAccountsError(null);
     setNeedsRediscovery(false);
 
-    let cancelled = false;
+    const discovery = discoverWallets();
 
     (async () => {
       let foundAny = false;
-      for await (const wallet of discoverWallets()) {
-        if (cancelled) break;
+      for await (const wallet of discovery.wallets) {
         foundAny = true;
         setConnectionPhase('selecting_wallet');
         setDiscoveredWallets(prev => [...prev, wallet]);
       }
-      if (!cancelled && !foundAny) {
+      if (!foundAny) {
         setAccountsError('No wallets found. Make sure your wallet extension is installed.');
       }
     })();
 
     return () => {
-      cancelled = true;
+      discovery.cancel();
     };
   }, [open, status, discoverWallets]);
 
@@ -151,8 +183,9 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
     setAccountsError(null);
     setNeedsRediscovery(false);
 
+    const discovery = discoverWallets();
     let foundAny = false;
-    for await (const wallet of discoverWallets()) {
+    for await (const wallet of discovery.wallets) {
       foundAny = true;
       setConnectionPhase('selecting_wallet');
       setDiscoveredWallets(prev => [...prev, wallet]);
@@ -766,12 +799,11 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
                           p: 2,
                           backgroundColor: 'rgba(0, 0, 0, 0.2)',
                           borderRadius: 1,
-                          textAlign: 'center',
+                          display: 'flex',
+                          justifyContent: 'center',
                         }}
                       >
-                        <Typography variant="h4" sx={{ letterSpacing: '0.3em', mb: 1 }}>
-                          {hashToEmoji(pendingConnection.verificationHash)}
-                        </Typography>
+                        <EmojiGrid emojis={hashToEmoji(pendingConnection.verificationHash)} size="large" />
                       </Box>
                     </Box>
 

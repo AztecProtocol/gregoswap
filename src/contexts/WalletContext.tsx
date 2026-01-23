@@ -6,7 +6,7 @@ import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ChainInfo } from '@aztec/aztec.js/account';
 import { useNetwork } from './NetworkContext';
 import { Fr } from '@aztec/aztec.js/fields';
-import { WalletManager, type WalletProvider as WalletProviderType, type PendingConnection } from '@aztec/wallet-sdk/manager';
+import { WalletManager, type WalletProvider as WalletProviderType, type PendingConnection, type DiscoverySession } from '@aztec/wallet-sdk/manager';
 
 /**
  * Callback type for wallet disconnect events
@@ -20,8 +20,8 @@ interface WalletContextType {
   isLoading: boolean;
   error: string | null;
   isUsingEmbeddedWallet: boolean;
-  /** Discovers wallets via async iterator. Yields providers as users approve them. */
-  discoverWallets: (timeout?: number) => AsyncIterable<WalletProviderType>;
+  /** Discovers wallets. Returns a DiscoverySession with wallets iterator and cancel(). */
+  discoverWallets: (timeout?: number) => DiscoverySession;
   /** Initiates connection to a wallet provider. Returns PendingConnection for user verification. */
   initiateConnection: (provider: WalletProviderType) => Promise<PendingConnection>;
   /** Confirms a pending connection after user verifies the emoji. Returns the Wallet. */
@@ -162,10 +162,10 @@ export function WalletProvider({ children }: WalletProviderProps) {
   }, []);
 
   /**
-   * Discovers wallets via async iterator. Yields providers as users approve them.
+   * Discovers wallets. Returns a DiscoverySession with wallets iterator and cancel().
    */
   const discoverWallets = useCallback(
-    (timeout?: number): AsyncIterable<WalletProviderType> => {
+    (timeout?: number): DiscoverySession => {
       const chainInfo: ChainInfo = {
         chainId: Fr.fromString(activeNetwork.chainId),
         version: Fr.fromString(activeNetwork.rollupVersion),
