@@ -673,12 +673,7 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
                     <Typography variant="body2" color="text.secondary" textAlign="center">
                       Connecting and retrieving accounts...
                     </Typography>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      textAlign="center"
-                      sx={{ alignSelf: 'center', mt: 0.5 }}
-                    >
+                    <Typography textAlign="center" sx={{ alignSelf: 'center', mt: 0.5 }}>
                       Please approve the request in your wallet
                     </Typography>
                   </>
