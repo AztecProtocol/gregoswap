@@ -11,9 +11,9 @@ import {
   Typography,
 } from '@mui/material';
 import type { SelectChangeEvent } from '@mui/material';
-import { useNetwork } from '../contexts/NetworkContext';
-import { useWallet } from '../contexts/WalletContext';
-import { useOnboarding } from '../contexts/OnboardingContext';
+import { useNetwork } from '../contexts/network';
+import { useWallet } from '../contexts/wallet';
+import { useOnboarding } from '../contexts/onboarding';
 
 export function NetworkSwitcher() {
   const { activeNetwork, availableNetworks, switchNetwork } = useNetwork();

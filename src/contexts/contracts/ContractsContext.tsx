@@ -7,10 +7,10 @@ import { createContext, useContext, useEffect, type ReactNode, useCallback } fro
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { TxReceipt } from '@aztec/stdlib/tx';
 import { Fr } from '@aztec/aztec.js/fields';
-import { useWallet } from './WalletContext';
-import { useNetwork } from './NetworkContext';
-import * as contractService from '../services/contractService';
-import { useContractsReducer } from '../reducers';
+import { useWallet } from '../wallet';
+import { useNetwork } from '../network';
+import * as contractService from '../../services/contractService';
+import { useContractsReducer } from './reducer';
 
 interface ContractsContextType {
   isLoadingContracts: boolean;

@@ -6,7 +6,7 @@
 import type { AztecNode } from '@aztec/aztec.js/node';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
-import { createReducerHook, type ActionsFrom } from './utils';
+import { createReducerHook, type ActionsFrom } from '../utils';
 
 // =============================================================================
 // State

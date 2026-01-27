@@ -5,8 +5,8 @@ import { WalletChip } from './components/WalletChip';
 import { NetworkSwitcher } from './components/NetworkSwitcher';
 import { FooterInfo } from './components/FooterInfo';
 import { SwapContainer } from './components/swap';
-import { useWallet } from './contexts/WalletContext';
-import { useOnboarding } from './contexts/OnboardingContext';
+import { useWallet } from './contexts/wallet';
+import { useOnboarding } from './contexts/onboarding';
 import { OnboardingModal } from './components/OnboardingModal';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 

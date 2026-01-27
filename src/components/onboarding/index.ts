@@ -3,7 +3,6 @@
  * Re-exports all onboarding subcomponents
  */
 
-export { EmojiGrid } from './EmojiGrid';
 export { OnboardingProgress } from './OnboardingProgress';
 export { WalletDiscovery } from './WalletDiscovery';
 export { WalletSelection } from './WalletSelection';

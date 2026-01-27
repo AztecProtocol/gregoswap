@@ -9,9 +9,9 @@ import type { AztecNode } from '@aztec/aztec.js/node';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { WalletProvider, PendingConnection, DiscoverySession } from '@aztec/wallet-sdk/manager';
-import { useNetwork } from './NetworkContext';
-import * as walletService from '../services/walletService';
-import { useWalletReducer } from '../reducers';
+import { useNetwork } from '../network';
+import * as walletService from '../../services/walletService';
+import { useWalletReducer } from './reducer';
 
 export type WalletDisconnectCallback = () => void;
 
@@ -22,9 +22,6 @@ interface WalletContextType {
   isLoading: boolean;
   error: string | null;
   isUsingEmbeddedWallet: boolean;
-
-  // Wallet discovery and connection (delegated to WalletConnectionContext for UI)
-  // These are kept here for backward compatibility during migration
   discoverWallets: (timeout?: number) => DiscoverySession;
   initiateConnection: (provider: WalletProvider) => Promise<PendingConnection>;
   confirmConnection: (provider: WalletProvider, pendingConnection: PendingConnection) => Promise<Wallet>;
@@ -158,7 +155,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
       activeDiscoveryRef.current = discovery;
       return discovery;
     },
-    [activeNetwork]
+    [activeNetwork],
   );
 
   // Initiate connection
@@ -200,7 +197,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
 
       return extensionWallet;
     },
-    [handleUnexpectedDisconnect, actions]
+    [handleUnexpectedDisconnect, actions],
   );
 
   // Cancel connection
@@ -213,7 +210,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
     (address: AztecAddress | null) => {
       actions.setAddress(address);
     },
-    [actions]
+    [actions],
   );
 
   // Set external wallet (called from WalletConnectionContext)
@@ -222,7 +219,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
       hasConnectedExternalWalletRef.current = true;
       actions.setExternal(wallet);
     },
-    [actions]
+    [actions],
   );
 
   // Disconnect wallet

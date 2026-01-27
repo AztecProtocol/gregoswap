@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
-import { initializeNetworks, getNetworkById, type NetworkConfig } from '../config/networks';
+import { initializeNetworks, type NetworkConfig } from '../../config/networks';
 
 interface NetworkContextType {
   activeNetwork: NetworkConfig;
@@ -53,7 +53,7 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
           if (stored && networks.some(n => n.id === stored)) {
             initialNetwork = stored;
           }
-        } catch (err) {
+        } catch {
           // Silently fail - localStorage not available
         }
 
@@ -86,7 +86,7 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
       // Persist to localStorage
       try {
         localStorage.setItem(STORAGE_KEY, networkId);
-      } catch (err) {
+      } catch {
         // Silently fail - localStorage not available
       }
     },

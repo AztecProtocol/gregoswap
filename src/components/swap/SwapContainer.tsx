@@ -11,10 +11,10 @@ import { SwapProgress } from './SwapProgress';
 import { ExchangeRateDisplay } from './ExchangeRateDisplay';
 import { SwapButton } from './SwapButton';
 import { SwapErrorAlert } from './SwapErrorAlert';
-import { useContracts } from '../../contexts/ContractsContext';
-import { useWallet } from '../../contexts/WalletContext';
-import { useOnboarding } from '../../contexts/OnboardingContext';
-import { useSwap } from '../../contexts/SwapContext';
+import { useContracts } from '../../contexts/contracts';
+import { useWallet } from '../../contexts/wallet';
+import { useOnboarding } from '../../contexts/onboarding';
+import { useSwap } from '../../contexts/swap';
 import type { Balances } from '../../types';
 
 export function SwapContainer() {
@@ -50,8 +50,6 @@ export function SwapContainer() {
   const [isLoadingBalances, setIsLoadingBalances] = useState(false);
 
   const swapErrorRef = useRef<HTMLDivElement | null>(null);
-  const prevOnboardingStatusRef = useRef(onboardingStatus);
-  const prevSwapPhaseRef = useRef(swapPhase);
 
   // Fetch balances
   const refetchBalances = useCallback(async () => {
@@ -78,20 +76,19 @@ export function SwapContainer() {
     }
   }, [isUsingEmbeddedWallet, currentAddress]);
 
-  // Refetch balances when onboarding completes or swap succeeds
+  // Refetch balances when onboarding completes
   useEffect(() => {
-    const wasOnboardingCompleting = prevOnboardingStatusRef.current !== 'completed';
-    const onboardingJustCompleted = onboardingStatus === 'completed';
-    prevOnboardingStatusRef.current = onboardingStatus;
-
-    const wasSwapping = prevSwapPhaseRef.current !== 'success';
-    const swapJustSucceeded = swapPhase === 'success';
-    prevSwapPhaseRef.current = swapPhase;
-
-    if ((wasOnboardingCompleting && onboardingJustCompleted) || (wasSwapping && swapJustSucceeded)) {
+    if (onboardingStatus === 'completed') {
       refetchBalances();
     }
-  }, [onboardingStatus, swapPhase, refetchBalances]);
+  }, [onboardingStatus, refetchBalances]);
+
+  // Refetch balances when swap succeeds
+  useEffect(() => {
+    if (swapPhase === 'success') {
+      refetchBalances();
+    }
+  }, [swapPhase, refetchBalances]);
 
   // Scroll to error when it appears
   useEffect(() => {
@@ -218,12 +215,11 @@ export function SwapContainer() {
 
       {/* Swap Button or Progress */}
       {isSwapping ? (
-        <SwapProgress phase={swapPhase === 'sending' ? 'sending' : undefined} />
+        <SwapProgress />
       ) : (
         <SwapButton
           onClick={handleSwapClick}
           disabled={!canSwap || isDripping}
-          loading={isSwapping}
           contractsLoading={isLoadingContracts}
           hasAmount={!!fromAmount && parseFloat(fromAmount) > 0}
         />

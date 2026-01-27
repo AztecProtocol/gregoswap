@@ -3,7 +3,7 @@
  * Manages the onboarding flow state machine and drip execution
  */
 
-import { createReducerHook, type ActionsFrom } from './utils';
+import { createReducerHook, type ActionsFrom } from '../utils';
 
 // =============================================================================
 // State

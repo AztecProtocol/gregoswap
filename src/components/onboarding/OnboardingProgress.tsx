@@ -17,7 +17,7 @@ import {
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
 import ErrorIcon from '@mui/icons-material/Error';
-import type { OnboardingStep, OnboardingStatus } from '../../reducers';
+import type { OnboardingStep, OnboardingStatus } from '../../contexts/onboarding';
 
 interface OnboardingProgressProps {
   currentStep: number;

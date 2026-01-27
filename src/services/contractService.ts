@@ -17,7 +17,7 @@ import type { AMMContract } from '@aztec/noir-contracts.js/AMM';
 import type { ProofOfPasswordContract } from '../../contracts/target/ProofOfPassword';
 import { BigDecimal } from '../utils/bigDecimal';
 import type { NetworkConfig } from '../types';
-import type { OnboardingResult } from '../reducers';
+import type { OnboardingResult } from '../contexts/onboarding/reducer';
 
 /**
  * Contracts returned after swap registration

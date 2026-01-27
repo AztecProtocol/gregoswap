@@ -38,20 +38,6 @@ export function bindActions<T extends ActionCreators>(
 }
 
 /**
- * Hook that creates memoized bound actions
- *
- * @example
- * const [state, dispatch] = useReducer(swapReducer, initialState);
- * const actions = useBoundActions(swapActions, dispatch);
- */
-export function useBoundActions<T extends ActionCreators>(
-  actionCreators: T,
-  dispatch: React.Dispatch<ReturnType<T[keyof T]>>
-): { [K in keyof T]: (...args: Parameters<T[K]>) => void } {
-  return useMemo(() => bindActions(actionCreators, dispatch), [actionCreators, dispatch]);
-}
-
-/**
  * Creates a useReducer hook pre-configured with a specific reducer, actions, and initial state.
  * Returns a hook that provides [state, boundActions] tuple.
  *

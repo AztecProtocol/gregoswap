@@ -4,10 +4,10 @@
  */
 
 import { createContext, useContext, useCallback, useEffect, useRef, type ReactNode } from 'react';
-import { useContracts } from './ContractsContext';
-import { useOnboarding } from './OnboardingContext';
-import { useSwapReducer, type SwapState } from '../reducers';
-import { GREGOCOIN_USD_PRICE, EXCHANGE_RATE_POLL_INTERVAL_MS } from '../types';
+import { useContracts } from '../contracts';
+import { useOnboarding } from '../onboarding';
+import { useSwapReducer, type SwapState } from './reducer';
+import { GREGOCOIN_USD_PRICE, EXCHANGE_RATE_POLL_INTERVAL_MS } from '../../types';
 
 interface SwapContextType extends SwapState {
   // Computed values

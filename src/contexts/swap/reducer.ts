@@ -3,7 +3,7 @@
  * Manages swap UI state and transaction phases
  */
 
-import { createReducerHook, type ActionsFrom } from './utils';
+import { createReducerHook, type ActionsFrom } from '../utils';
 
 // =============================================================================
 // State

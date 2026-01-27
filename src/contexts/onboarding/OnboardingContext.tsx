@@ -6,8 +6,8 @@
 
 import { createContext, useContext, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
-import { useWallet } from './WalletContext';
-import { useContracts } from './ContractsContext';
+import { useWallet } from '../wallet';
+import { useContracts } from '../contracts';
 import {
   useOnboardingReducer,
   calculateCurrentStep,
@@ -17,8 +17,8 @@ import {
   type OnboardingStep,
   type OnboardingResult,
   type DripPhase,
-} from '../reducers';
-import { parseDripError } from '../services/contractService';
+} from './reducer';
+import { parseDripError } from '../../services/contractService';
 
 export type { OnboardingStatus, OnboardingStep };
 export { ONBOARDING_STEPS, ONBOARDING_STEPS_WITH_DRIP };
