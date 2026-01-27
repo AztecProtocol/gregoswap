@@ -39,15 +39,13 @@ const shimmer = keyframes`
   }
 `;
 
-type SwapPhase = 'sending' | 'mining';
-
 interface SwapProgressProps {
-  phase?: SwapPhase;
+  phase?: 'sending';
 }
 
-export function SwapProgress({ phase = 'sending' }: SwapProgressProps) {
-  const statusText = phase === 'sending' ? 'Proving & sending transaction' : 'Mining transaction';
-  const statusDetail = phase === 'sending' ? 'Preparing your swap...' : 'Waiting for confirmation...';
+export function SwapProgress({ phase: _phase }: SwapProgressProps) {
+  const statusText = 'Proving & sending transaction';
+  const statusDetail = 'Preparing your swap...';
   return (
     <Box
       sx={{

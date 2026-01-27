@@ -3,93 +3,11 @@
  * Manages swap UI state and execution
  */
 
-import { createContext, useContext, useReducer, useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { useContracts } from './ContractsContext';
 import { useOnboarding } from './OnboardingContext';
-import type { SwapState, SwapAction } from '../types';
+import { useSwapReducer, type SwapState } from '../reducers';
 import { GREGOCOIN_USD_PRICE, EXCHANGE_RATE_POLL_INTERVAL_MS } from '../types';
-
-const initialState: SwapState = {
-  fromAmount: '',
-  toAmount: '',
-  exchangeRate: null,
-  isLoadingRate: false,
-  phase: 'idle',
-  error: null,
-};
-
-function swapReducer(state: SwapState, action: SwapAction): SwapState {
-  switch (action.type) {
-    case 'SET_FROM_AMOUNT':
-      return {
-        ...state,
-        fromAmount: action.amount,
-      };
-
-    case 'SET_TO_AMOUNT':
-      return {
-        ...state,
-        toAmount: action.amount,
-      };
-
-    case 'SET_RATE':
-      return {
-        ...state,
-        exchangeRate: action.rate,
-        isLoadingRate: false,
-      };
-
-    case 'SET_LOADING_RATE':
-      return {
-        ...state,
-        isLoadingRate: action.loading,
-      };
-
-    case 'START_SWAP':
-      return {
-        ...state,
-        phase: 'sending',
-        error: null,
-      };
-
-    case 'SWAP_MINING':
-      return {
-        ...state,
-        phase: 'mining',
-      };
-
-    case 'SWAP_SUCCESS':
-      return {
-        ...state,
-        phase: 'success',
-        fromAmount: '',
-        toAmount: '',
-      };
-
-    case 'SWAP_ERROR':
-      return {
-        ...state,
-        phase: 'error',
-        error: action.error,
-      };
-
-    case 'DISMISS_ERROR':
-      return {
-        ...state,
-        phase: 'idle',
-        error: null,
-      };
-
-    case 'RESET':
-      return {
-        ...initialState,
-        exchangeRate: state.exchangeRate, // Preserve exchange rate
-      };
-
-    default:
-      return state;
-  }
-}
 
 interface SwapContextType extends SwapState {
   // Computed values
@@ -129,7 +47,8 @@ export function SwapProvider({ children }: SwapProviderProps) {
     isDripPending,
     clearSwapPending,
   } = useOnboarding();
-  const [state, dispatch] = useReducer(swapReducer, initialState);
+
+  const [state, actions] = useSwapReducer();
 
   // Refs for rate fetching and orchestration
   const isFetchingRateRef = useRef(false);
@@ -138,20 +57,20 @@ export function SwapProvider({ children }: SwapProviderProps) {
   const prevExchangeRateRef = useRef<number | null>(null);
 
   // Computed value used by multiple effects
-  const isSwapping = state.phase === 'sending' || state.phase === 'mining';
+  const isSwapping = state.phase === 'sending';
 
   // Internal swap execution (for use in effects)
   const doSwap = useCallback(async () => {
     if (isLoadingContracts || !state.fromAmount || parseFloat(state.fromAmount) <= 0) {
-      dispatch({ type: 'SWAP_ERROR', error: 'Cannot perform swap: Missing data or invalid amount' });
+      actions.swapError('Cannot perform swap: Missing data or invalid amount');
       return;
     }
 
-    dispatch({ type: 'START_SWAP' });
+    actions.startSwap();
 
     try {
       await swap(parseFloat(state.toAmount), parseFloat(state.fromAmount) * 1.1);
-      dispatch({ type: 'SWAP_SUCCESS' });
+      actions.swapSuccess();
     } catch (error) {
       let errorMessage = 'Swap failed. Please try again.';
 
@@ -167,17 +86,17 @@ export function SwapProvider({ children }: SwapProviderProps) {
         }
       }
 
-      dispatch({ type: 'SWAP_ERROR', error: errorMessage });
+      actions.swapError(errorMessage);
     }
-  }, [isLoadingContracts, state.fromAmount, state.toAmount, swap]);
+  }, [isLoadingContracts, state.fromAmount, state.toAmount, swap, actions]);
 
   // Pre-populate exchange rate from onboarding result
   useEffect(() => {
     if (onboardingResult && !hasUsedOnboardingResultRef.current) {
-      dispatch({ type: 'SET_RATE', rate: onboardingResult.exchangeRate });
+      actions.setRate(onboardingResult.exchangeRate);
       hasUsedOnboardingResultRef.current = true;
     }
-  }, [onboardingResult]);
+  }, [onboardingResult, actions]);
 
   // Execute swap when onboarding completes with pending swap
   useEffect(() => {
@@ -204,36 +123,36 @@ export function SwapProvider({ children }: SwapProviderProps) {
       if (state.fromAmount !== '' && state.toAmount === '') {
         const numValue = parseFloat(state.fromAmount);
         if (!isNaN(numValue)) {
-          dispatch({ type: 'SET_TO_AMOUNT', amount: (numValue * state.exchangeRate).toFixed(6) });
+          actions.setToAmount((numValue * state.exchangeRate).toFixed(6));
         }
       } else if (state.toAmount !== '' && state.fromAmount === '') {
         const numValue = parseFloat(state.toAmount);
         if (!isNaN(numValue)) {
-          dispatch({ type: 'SET_FROM_AMOUNT', amount: (numValue / state.exchangeRate).toFixed(6) });
+          actions.setFromAmount((numValue / state.exchangeRate).toFixed(6));
         }
       }
     }
 
     prevExchangeRateRef.current = state.exchangeRate;
-  }, [state.exchangeRate, state.fromAmount, state.toAmount]);
+  }, [state.exchangeRate, state.fromAmount, state.toAmount, actions]);
 
   // Reset exchange rate when contracts are loading
   useEffect(() => {
     if (isLoadingContracts) {
-      dispatch({ type: 'SET_LOADING_RATE', loading: false });
+      actions.setLoadingRate(false);
       isFetchingRateRef.current = false;
     }
-  }, [isLoadingContracts]);
+  }, [isLoadingContracts, actions]);
 
   // Fetch exchange rate with auto-refresh
   useEffect(() => {
     async function fetchExchangeRate() {
-      const isSwapping = state.phase === 'sending' || state.phase === 'mining';
+      const isSwapping = state.phase === 'sending';
       const isBusy = isLoadingContracts || isSwapping || isSwapPending || isDripPending;
       const isOnboardingInProgress = onboardingStatus !== 'completed' && onboardingStatus !== 'idle';
 
       if (isBusy || isOnboardingInProgress) {
-        dispatch({ type: 'SET_LOADING_RATE', loading: false });
+        actions.setLoadingRate(false);
         return;
       }
 
@@ -243,12 +162,12 @@ export function SwapProvider({ children }: SwapProviderProps) {
 
       try {
         isFetchingRateRef.current = true;
-        dispatch({ type: 'SET_LOADING_RATE', loading: true });
+        actions.setLoadingRate(true);
 
         const rate = await getExchangeRate();
-        dispatch({ type: 'SET_RATE', rate });
+        actions.setRate(rate);
       } finally {
-        dispatch({ type: 'SET_LOADING_RATE', loading: false });
+        actions.setLoadingRate(false);
         isFetchingRateRef.current = false;
       }
     }
@@ -261,51 +180,43 @@ export function SwapProvider({ children }: SwapProviderProps) {
 
     return () => {
       clearInterval(intervalId);
-      dispatch({ type: 'SET_LOADING_RATE', loading: false });
+      actions.setLoadingRate(false);
       isFetchingRateRef.current = false;
     };
-  }, [isLoadingContracts, state.phase, isDripPending, getExchangeRate, onboardingStatus, isSwapPending]);
+  }, [isLoadingContracts, state.phase, isDripPending, getExchangeRate, onboardingStatus, isSwapPending, actions]);
 
   // Amount change handlers with recalculation
   const setFromAmount = useCallback(
     (value: string) => {
-      dispatch({ type: 'SET_FROM_AMOUNT', amount: value });
+      actions.setFromAmount(value);
 
       if (value === '' || state.exchangeRate === null) {
-        dispatch({ type: 'SET_TO_AMOUNT', amount: '' });
+        actions.setToAmount('');
       } else {
         const numValue = parseFloat(value);
         if (!isNaN(numValue)) {
-          dispatch({ type: 'SET_TO_AMOUNT', amount: (numValue * state.exchangeRate).toFixed(6) });
+          actions.setToAmount((numValue * state.exchangeRate).toFixed(6));
         }
       }
     },
-    [state.exchangeRate],
+    [state.exchangeRate, actions]
   );
 
   const setToAmount = useCallback(
     (value: string) => {
-      dispatch({ type: 'SET_TO_AMOUNT', amount: value });
+      actions.setToAmount(value);
 
       if (value === '' || state.exchangeRate === null) {
-        dispatch({ type: 'SET_FROM_AMOUNT', amount: '' });
+        actions.setFromAmount('');
       } else {
         const numValue = parseFloat(value);
         if (!isNaN(numValue)) {
-          dispatch({ type: 'SET_FROM_AMOUNT', amount: (numValue / state.exchangeRate).toFixed(6) });
+          actions.setFromAmount((numValue / state.exchangeRate).toFixed(6));
         }
       }
     },
-    [state.exchangeRate],
+    [state.exchangeRate, actions]
   );
-
-  const dismissError = useCallback(() => {
-    dispatch({ type: 'DISMISS_ERROR' });
-  }, []);
-
-  const reset = useCallback(() => {
-    dispatch({ type: 'RESET' });
-  }, []);
 
   // Computed values
   const fromAmountUSD = state.fromAmount ? parseFloat(state.fromAmount) * GREGOCOIN_USD_PRICE : 0;
@@ -326,8 +237,8 @@ export function SwapProvider({ children }: SwapProviderProps) {
     setFromAmount,
     setToAmount,
     executeSwap: doSwap,
-    dismissError,
-    reset,
+    dismissError: actions.dismissError,
+    reset: actions.reset,
   };
 
   return <SwapContext.Provider value={value}>{children}</SwapContext.Provider>;

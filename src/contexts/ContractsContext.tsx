@@ -3,62 +3,17 @@
  * Manages contract instances and registration state
  */
 
-import { createContext, useContext, useReducer, useEffect, type ReactNode, useCallback } from 'react';
+import { createContext, useContext, useEffect, type ReactNode, useCallback } from 'react';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { TxReceipt } from '@aztec/stdlib/tx';
 import { Fr } from '@aztec/aztec.js/fields';
 import { useWallet } from './WalletContext';
 import { useNetwork } from './NetworkContext';
 import * as contractService from '../services/contractService';
-import type { ContractsState, ContractsAction, ContractRegistrationStage } from '../types';
-
-const initialState: ContractsState = {
-  contracts: {
-    gregoCoin: null,
-    gregoCoinPremium: null,
-    amm: null,
-    pop: null,
-  },
-  registeredStages: new Set(),
-  isLoading: true,
-};
-
-function contractsReducer(state: ContractsState, action: ContractsAction): ContractsState {
-  switch (action.type) {
-    case 'REGISTER_START':
-      return {
-        ...state,
-        isLoading: true,
-      };
-
-    case 'REGISTER_SUCCESS':
-      return {
-        ...state,
-        contracts: {
-          ...state.contracts,
-          ...action.contracts,
-        },
-        registeredStages: new Set([...state.registeredStages, action.stage]),
-        isLoading: false,
-      };
-
-    case 'REGISTER_FAIL':
-      return {
-        ...state,
-        isLoading: false,
-      };
-
-    case 'CLEAR':
-      return initialState;
-
-    default:
-      return state;
-  }
-}
+import { useContractsReducer } from '../reducers';
 
 interface ContractsContextType {
   isLoadingContracts: boolean;
-  registeredStages: Set<ContractRegistrationStage>;
 
   // Registration methods
   registerBaseContracts: () => Promise<void>;
@@ -89,7 +44,8 @@ interface ContractsProviderProps {
 export function ContractsProvider({ children }: ContractsProviderProps) {
   const { wallet, currentAddress, isLoading: walletLoading, node, isUsingEmbeddedWallet } = useWallet();
   const { activeNetwork } = useNetwork();
-  const [state, dispatch] = useReducer(contractsReducer, initialState);
+
+  const [state, actions] = useContractsReducer();
 
   // Register base contracts (AMM, tokens)
   const registerBaseContracts = useCallback(async () => {
@@ -97,20 +53,16 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
       throw new Error('Wallet not initialized');
     }
 
-    dispatch({ type: 'REGISTER_START' });
+    actions.registerStart();
 
     try {
       const swapContracts = await contractService.registerSwapContracts(wallet, node, activeNetwork);
-      dispatch({
-        type: 'REGISTER_SUCCESS',
-        stage: 'base',
-        contracts: swapContracts,
-      });
+      actions.registerSuccess('base', swapContracts);
     } catch (error) {
-      dispatch({ type: 'REGISTER_FAIL', error: error instanceof Error ? error.message : 'Registration failed' });
+      actions.registerFail(error instanceof Error ? error.message : 'Registration failed');
       throw error;
     }
-  }, [wallet, node, activeNetwork]);
+  }, [wallet, node, activeNetwork, actions]);
 
   // Register drip contracts (ProofOfPassword)
   const registerDripContracts = useCallback(async () => {
@@ -118,20 +70,16 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
       throw new Error('Wallet not initialized');
     }
 
-    dispatch({ type: 'REGISTER_START' });
+    actions.registerStart();
 
     try {
       const dripContracts = await contractService.registerDripContracts(wallet, node, activeNetwork);
-      dispatch({
-        type: 'REGISTER_SUCCESS',
-        stage: 'drip',
-        contracts: dripContracts,
-      });
+      actions.registerSuccess('drip', dripContracts);
     } catch (error) {
-      dispatch({ type: 'REGISTER_FAIL', error: error instanceof Error ? error.message : 'Registration failed' });
+      actions.registerFail(error instanceof Error ? error.message : 'Registration failed');
       throw error;
     }
-  }, [wallet, node, activeNetwork]);
+  }, [wallet, node, activeNetwork, actions]);
 
   // Get exchange rate
   const getExchangeRate = useCallback(async (): Promise<number> => {
@@ -236,7 +184,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
   useEffect(() => {
     async function initializeContracts() {
       if (walletLoading || !wallet) {
-        dispatch({ type: 'REGISTER_START' });
+        actions.registerStart();
         return;
       }
 
@@ -248,16 +196,15 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
       try {
         await registerBaseContracts();
       } catch (err) {
-        dispatch({ type: 'REGISTER_FAIL', error: err instanceof Error ? err.message : 'Failed to initialize' });
+        actions.registerFail(err instanceof Error ? err.message : 'Failed to initialize');
       }
     }
 
     initializeContracts();
-  }, [wallet, walletLoading, isUsingEmbeddedWallet, registerBaseContracts]);
+  }, [wallet, walletLoading, isUsingEmbeddedWallet, registerBaseContracts, actions]);
 
   const value: ContractsContextType = {
     isLoadingContracts: state.isLoading,
-    registeredStages: state.registeredStages,
     registerBaseContracts,
     registerDripContracts,
     getExchangeRate,

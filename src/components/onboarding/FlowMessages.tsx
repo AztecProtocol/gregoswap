@@ -4,7 +4,7 @@
  */
 
 import { Box, Typography, Alert } from '@mui/material';
-import type { OnboardingStatus } from '../../types';
+import type { OnboardingStatus } from '../../reducers';
 
 interface FlowMessagesProps {
   status: OnboardingStatus;

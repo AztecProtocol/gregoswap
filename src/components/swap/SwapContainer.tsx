@@ -24,7 +24,6 @@ export function SwapContainer() {
     status: onboardingStatus,
     startOnboarding,
     isDripping,
-    dripPhase,
     dripError,
     dismissDripError,
   } = useOnboarding();
@@ -51,6 +50,8 @@ export function SwapContainer() {
   const [isLoadingBalances, setIsLoadingBalances] = useState(false);
 
   const swapErrorRef = useRef<HTMLDivElement | null>(null);
+  const prevOnboardingStatusRef = useRef(onboardingStatus);
+  const prevSwapPhaseRef = useRef(swapPhase);
 
   // Fetch balances
   const refetchBalances = useCallback(async () => {
@@ -77,12 +78,20 @@ export function SwapContainer() {
     }
   }, [isUsingEmbeddedWallet, currentAddress]);
 
-  // Refetch balances when drip succeeds
+  // Refetch balances when onboarding completes or swap succeeds
   useEffect(() => {
-    if (dripPhase === 'success') {
+    const wasOnboardingCompleting = prevOnboardingStatusRef.current !== 'completed';
+    const onboardingJustCompleted = onboardingStatus === 'completed';
+    prevOnboardingStatusRef.current = onboardingStatus;
+
+    const wasSwapping = prevSwapPhaseRef.current !== 'success';
+    const swapJustSucceeded = swapPhase === 'success';
+    prevSwapPhaseRef.current = swapPhase;
+
+    if ((wasOnboardingCompleting && onboardingJustCompleted) || (wasSwapping && swapJustSucceeded)) {
       refetchBalances();
     }
-  }, [dripPhase, refetchBalances]);
+  }, [onboardingStatus, swapPhase, refetchBalances]);
 
   // Scroll to error when it appears
   useEffect(() => {
@@ -209,7 +218,7 @@ export function SwapContainer() {
 
       {/* Swap Button or Progress */}
       {isSwapping ? (
-        <SwapProgress phase={swapPhase === 'sending' || swapPhase === 'mining' ? swapPhase : undefined} />
+        <SwapProgress phase={swapPhase === 'sending' ? 'sending' : undefined} />
       ) : (
         <SwapButton
           onClick={handleSwapClick}
