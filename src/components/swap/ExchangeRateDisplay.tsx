@@ -2,7 +2,7 @@ import { Box, Typography, CircularProgress } from '@mui/material';
 import { useContracts } from '../../contexts/ContractsContext';
 
 interface ExchangeRateDisplayProps {
-  exchangeRate: number | undefined;
+  exchangeRate: number | null;
   isLoadingRate: boolean;
 }
 
@@ -25,7 +25,7 @@ export function ExchangeRateDisplay({ exchangeRate, isLoadingRate }: ExchangeRat
       <Typography variant="body2" color="text.secondary">
         Exchange Rate:
       </Typography>
-      {isLoading || exchangeRate === undefined ? (
+      {isLoading || exchangeRate === null ? (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <CircularProgress size={14} sx={{ color: 'primary.main' }} />
           <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>

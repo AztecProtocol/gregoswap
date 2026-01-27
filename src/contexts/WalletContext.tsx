@@ -1,16 +1,92 @@
-import { createContext, useContext, useState, useEffect, useRef, type ReactNode, useCallback } from 'react';
-import { EmbeddedWallet } from '../embedded_wallet';
-import { createAztecNodeClient, type AztecNode } from '@aztec/aztec.js/node';
+/**
+ * Wallet Context
+ * Manages wallet instances (embedded vs external) and current address
+ * Connection flow logic has been extracted to WalletConnectionContext
+ */
+
+import { createContext, useContext, useReducer, useEffect, useRef, type ReactNode, useCallback } from 'react';
+import type { AztecNode } from '@aztec/aztec.js/node';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
-import type { ChainInfo } from '@aztec/aztec.js/account';
+import type { WalletProvider, PendingConnection, DiscoverySession } from '@aztec/wallet-sdk/manager';
 import { useNetwork } from './NetworkContext';
-import { Fr } from '@aztec/aztec.js/fields';
-import { WalletManager, type WalletProvider as WalletProviderType, type PendingConnection, type DiscoverySession } from '@aztec/wallet-sdk/manager';
+import * as walletService from '../services/walletService';
+import type { WalletState, WalletAction } from '../types';
 
-/**
- * Callback type for wallet disconnect events
- */
+const initialState: WalletState = {
+  wallet: null,
+  node: null,
+  currentAddress: null,
+  isUsingEmbeddedWallet: true,
+  isLoading: true,
+  error: null,
+};
+
+function walletReducer(state: WalletState, action: WalletAction): WalletState {
+  switch (action.type) {
+    case 'INIT_START':
+      return {
+        ...state,
+        isLoading: true,
+        error: null,
+      };
+
+    case 'INIT_EMBEDDED':
+      return {
+        ...state,
+        wallet: action.wallet,
+        node: action.node,
+        currentAddress: action.address,
+        isUsingEmbeddedWallet: true,
+        isLoading: false,
+        error: null,
+      };
+
+    case 'SET_EXTERNAL':
+      return {
+        ...state,
+        wallet: action.wallet,
+        currentAddress: null, // Will be set when account is selected
+        isUsingEmbeddedWallet: false,
+      };
+
+    case 'SET_ADDRESS':
+      return {
+        ...state,
+        currentAddress: action.address,
+      };
+
+    case 'DISCONNECT':
+      return {
+        ...state,
+        wallet: null,
+        currentAddress: null,
+        isUsingEmbeddedWallet: true,
+      };
+
+    case 'RESTORE_EMBEDDED':
+      return {
+        ...state,
+        wallet: action.wallet,
+        currentAddress: action.address,
+        isUsingEmbeddedWallet: true,
+      };
+
+    case 'SET_ERROR':
+      return {
+        ...state,
+        isLoading: false,
+        error: action.error,
+      };
+
+    case 'RESET':
+      return initialState;
+
+    default:
+      return state;
+  }
+}
+
 export type WalletDisconnectCallback = () => void;
 
 interface WalletContextType {
@@ -20,17 +96,18 @@ interface WalletContextType {
   isLoading: boolean;
   error: string | null;
   isUsingEmbeddedWallet: boolean;
-  /** Discovers wallets. Returns a DiscoverySession with wallets iterator and cancel(). */
+
+  // Wallet discovery and connection (delegated to WalletConnectionContext for UI)
+  // These are kept here for backward compatibility during migration
   discoverWallets: (timeout?: number) => DiscoverySession;
-  /** Initiates connection to a wallet provider. Returns PendingConnection for user verification. */
-  initiateConnection: (provider: WalletProviderType) => Promise<PendingConnection>;
-  /** Confirms a pending connection after user verifies the emoji. Returns the Wallet. */
-  confirmConnection: (provider: WalletProviderType, pendingConnection: PendingConnection) => Promise<Wallet>;
-  /** Cancels a pending connection. */
+  initiateConnection: (provider: WalletProvider) => Promise<PendingConnection>;
+  confirmConnection: (provider: WalletProvider, pendingConnection: PendingConnection) => Promise<Wallet>;
   cancelConnection: (pendingConnection: PendingConnection) => void;
+
+  // State management
   setCurrentAddress: (address: AztecAddress | null) => void;
+  setExternalWallet: (wallet: Wallet) => void;
   disconnectWallet: () => Promise<void>;
-  /** Register a callback for unexpected wallet disconnects */
   onWalletDisconnect: (callback: WalletDisconnectCallback) => () => void;
 }
 
@@ -50,29 +127,21 @@ interface WalletProviderProps {
 
 export function WalletProvider({ children }: WalletProviderProps) {
   const { activeNetwork } = useNetwork();
+  const [state, dispatch] = useReducer(walletReducer, initialState);
 
-  const [wallet, setWallet] = useState<Wallet | null>(null);
-  const [currentAddress, setCurrentAddress] = useState<AztecAddress | null>(null);
-  const [node, setNode] = useState<AztecNode | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isUsingEmbeddedWallet, setIsUsingEmbeddedWallet] = useState(true);
-
+  // Refs for embedded wallet restoration and provider tracking
   const embeddedWalletRef = useRef<Wallet | null>(null);
   const embeddedAddressRef = useRef<AztecAddress | null>(null);
   const previousNodeUrlRef = useRef<string | null>(null);
-  const hasConnectedExternalWalletRef = useRef(false); // Track if user explicitly connected external wallet
+  const hasConnectedExternalWalletRef = useRef(false);
 
-  // Track current provider and disconnect unsubscribe function
-  const currentProviderRef = useRef<WalletProviderType | null>(null);
+  // Provider tracking for disconnect handling
+  const currentProviderRef = useRef<WalletProvider | null>(null);
   const providerDisconnectUnsubscribeRef = useRef<(() => void) | null>(null);
-
-  // Track active discovery session to auto-cancel on new discovery
   const activeDiscoveryRef = useRef<DiscoverySession | null>(null);
-
-  // Callbacks registered by consumers to be notified of unexpected disconnects
   const disconnectCallbacksRef = useRef<Set<WalletDisconnectCallback>>(new Set());
 
+  // Initialize embedded wallet when network changes
   useEffect(() => {
     const nodeUrl = activeNetwork?.nodeUrl;
 
@@ -86,52 +155,46 @@ export function WalletProvider({ children }: WalletProviderProps) {
     }
 
     previousNodeUrlRef.current = nodeUrl;
-    hasConnectedExternalWalletRef.current = false; // Reset when changing networks
+    hasConnectedExternalWalletRef.current = false;
 
     async function initializeWallet() {
       try {
-        setIsLoading(true);
-        setError(null);
+        dispatch({ type: 'INIT_START' });
 
-        const aztecNode = createAztecNodeClient(nodeUrl);
+        const node = walletService.createNodeClient(nodeUrl);
+        const embeddedWallet = await walletService.createEmbeddedWallet(node);
+        const accounts = await embeddedWallet.getAccounts();
+        const defaultAccountAddress = accounts[0]?.item;
 
-        setNode(aztecNode);
-
-        const embeddedWallet = await EmbeddedWallet.create(aztecNode);
-        const defaultAccountAddress = (await embeddedWallet.getAccounts())[0]?.item;
-
-        // Store embedded wallet and address for later restoration
+        // Store embedded wallet for later restoration
         embeddedWalletRef.current = embeddedWallet;
         embeddedAddressRef.current = defaultAccountAddress;
 
         // Only set embedded wallet as active if user hasn't connected an external wallet
         if (!hasConnectedExternalWalletRef.current) {
-          setIsUsingEmbeddedWallet(true);
-          setCurrentAddress(defaultAccountAddress);
-          setWallet(embeddedWallet);
+          dispatch({
+            type: 'INIT_EMBEDDED',
+            wallet: embeddedWallet,
+            node,
+            address: defaultAccountAddress,
+          });
         }
-        setIsLoading(false);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
 
-        // Add helpful message for connection issues
         const fullError =
           errorMessage.includes('timeout') || errorMessage.includes('unreachable')
             ? `${errorMessage}\n\nIf using local network, make sure Aztec sandbox is running:\n  aztec start --sandbox\n\nThen deploy contracts:\n  yarn deploy:local`
             : errorMessage;
 
-        setError(fullError);
-        setIsLoading(false);
+        dispatch({ type: 'SET_ERROR', error: fullError });
       }
     }
 
     initializeWallet();
-  }, [activeNetwork]); // Depend on activeNetwork but check nodeUrl manually
+  }, [activeNetwork]);
 
-  /**
-   * Handles unexpected wallet disconnection.
-   * Cleans up provider references and notifies registered callbacks.
-   */
+  // Handle unexpected wallet disconnection
   const handleUnexpectedDisconnect = useCallback(() => {
     console.log('Wallet disconnected unexpectedly');
 
@@ -145,13 +208,13 @@ export function WalletProvider({ children }: WalletProviderProps) {
     // Reset wallet state - restore embedded wallet
     hasConnectedExternalWalletRef.current = false;
     if (embeddedWalletRef.current) {
-      setWallet(embeddedWalletRef.current);
-      setCurrentAddress(embeddedAddressRef.current);
-      setIsUsingEmbeddedWallet(true);
+      dispatch({
+        type: 'RESTORE_EMBEDDED',
+        wallet: embeddedWalletRef.current,
+        address: embeddedAddressRef.current,
+      });
     } else {
-      setWallet(null);
-      setCurrentAddress(null);
-      setIsUsingEmbeddedWallet(true);
+      dispatch({ type: 'DISCONNECT' });
     }
 
     // Notify all registered callbacks
@@ -164,43 +227,26 @@ export function WalletProvider({ children }: WalletProviderProps) {
     }
   }, []);
 
-  /**
-   * Discovers wallets. Returns a DiscoverySession with wallets iterator and cancel().
-   * Automatically cancels any previous discovery session.
-   */
+  // Wallet discovery (kept for backward compatibility)
   const discoverWallets = useCallback(
     (timeout?: number): DiscoverySession => {
-      // Cancel any existing discovery before starting a new one
       if (activeDiscoveryRef.current) {
         activeDiscoveryRef.current.cancel();
       }
 
-      const chainInfo: ChainInfo = {
-        chainId: Fr.fromString(activeNetwork.chainId),
-        version: Fr.fromString(activeNetwork.rollupVersion),
-      };
-
-      const manager = WalletManager.configure({ extensions: { enabled: true } });
-      const discovery = manager.getAvailableWallets({
-        chainInfo,
-        appId: 'gregoswap',
-        timeout,
-      });
+      const chainInfo = walletService.getChainInfo(activeNetwork);
+      const discovery = walletService.discoverWallets(chainInfo, timeout);
 
       activeDiscoveryRef.current = discovery;
       return discovery;
     },
-    [activeNetwork],
+    [activeNetwork]
   );
 
-  /**
-   * Initiates connection to a wallet provider.
-   * Returns a PendingConnection with verification hash for user to verify emojis.
-   */
-  const initiateConnection = useCallback(async (provider: WalletProviderType): Promise<PendingConnection> => {
+  // Initiate connection
+  const initiateConnection = useCallback(async (provider: WalletProvider): Promise<PendingConnection> => {
     // Disconnect from previous provider if any
     if (currentProviderRef.current && currentProviderRef.current.disconnect) {
-      // Unsubscribe from previous disconnect callback
       if (providerDisconnectUnsubscribeRef.current) {
         providerDisconnectUnsubscribeRef.current();
         providerDisconnectUnsubscribeRef.current = null;
@@ -212,43 +258,53 @@ export function WalletProvider({ children }: WalletProviderProps) {
       }
     }
 
-    const appId = 'gregoswap';
-    const pendingConnection = await provider.establishSecureChannel(appId);
-    return pendingConnection;
+    return walletService.initiateConnection(provider);
   }, []);
 
-  /**
-   * Confirms a pending connection after user verifies the emoji matches.
-   * Returns the connected Wallet.
-   */
-  const confirmConnection = useCallback(async (provider: WalletProviderType, pendingConnection: PendingConnection): Promise<Wallet> => {
-    const extensionWallet = await pendingConnection.confirm();
+  // Confirm connection
+  const confirmConnection = useCallback(
+    async (provider: WalletProvider, pendingConnection: PendingConnection): Promise<Wallet> => {
+      const extensionWallet = await walletService.confirmConnection(pendingConnection);
 
-    // Store provider reference
-    currentProviderRef.current = provider;
+      // Store provider reference
+      currentProviderRef.current = provider;
 
-    // Register for disconnect events from the provider
-    if (provider.onDisconnect) {
-      providerDisconnectUnsubscribeRef.current = provider.onDisconnect(handleUnexpectedDisconnect);
-    }
+      // Register for disconnect events
+      if (provider.onDisconnect) {
+        providerDisconnectUnsubscribeRef.current = provider.onDisconnect(handleUnexpectedDisconnect);
+      }
 
-    // Mark that user explicitly connected an external wallet
-    hasConnectedExternalWalletRef.current = true;
+      // Mark that user explicitly connected an external wallet
+      hasConnectedExternalWalletRef.current = true;
 
-    // Replace the current wallet with extension wallet
-    setWallet(extensionWallet);
-    setCurrentAddress(null);
-    setIsUsingEmbeddedWallet(false);
-    return extensionWallet;
-  }, [handleUnexpectedDisconnect]);
+      // Update state
+      dispatch({ type: 'SET_EXTERNAL', wallet: extensionWallet });
 
-  /**
-   * Cancels a pending connection if user doesn't verify or wants to abort.
-   */
+      return extensionWallet;
+    },
+    [handleUnexpectedDisconnect]
+  );
+
+  // Cancel connection
   const cancelConnection = useCallback((pendingConnection: PendingConnection): void => {
-    pendingConnection.cancel();
+    walletService.cancelConnection(pendingConnection);
   }, []);
 
+  // Set current address
+  const setCurrentAddress = useCallback((address: AztecAddress | null) => {
+    dispatch({ type: 'SET_ADDRESS', address });
+  }, []);
+
+  // Set external wallet (called from WalletConnectionContext)
+  const setExternalWallet = useCallback(
+    (wallet: Wallet) => {
+      hasConnectedExternalWalletRef.current = true;
+      dispatch({ type: 'SET_EXTERNAL', wallet });
+    },
+    []
+  );
+
+  // Disconnect wallet
   const disconnectWallet = useCallback(async () => {
     // Unsubscribe from disconnect callback before disconnecting
     if (providerDisconnectUnsubscribeRef.current) {
@@ -257,28 +313,27 @@ export function WalletProvider({ children }: WalletProviderProps) {
     }
 
     // Disconnect from current provider
-    if (currentProviderRef.current && currentProviderRef.current.disconnect) {
+    if (currentProviderRef.current) {
       try {
-        await currentProviderRef.current.disconnect();
+        await walletService.disconnectProvider(currentProviderRef.current);
       } catch (error) {
         console.warn('Error disconnecting wallet:', error);
       }
     }
     currentProviderRef.current = null;
 
-    // Restore embedded wallet and address
+    // Restore embedded wallet
     if (embeddedWalletRef.current) {
-      hasConnectedExternalWalletRef.current = false; // Reset flag when disconnecting
-      setWallet(embeddedWalletRef.current);
-      setCurrentAddress(embeddedAddressRef.current);
-      setIsUsingEmbeddedWallet(true);
+      hasConnectedExternalWalletRef.current = false;
+      dispatch({
+        type: 'RESTORE_EMBEDDED',
+        wallet: embeddedWalletRef.current,
+        address: embeddedAddressRef.current,
+      });
     }
   }, []);
 
-  /**
-   * Register a callback to be notified when the wallet unexpectedly disconnects.
-   * Returns a function to unregister the callback.
-   */
+  // Register disconnect callback
   const onWalletDisconnect = useCallback((callback: WalletDisconnectCallback): (() => void) => {
     disconnectCallbacksRef.current.add(callback);
     return () => {
@@ -296,17 +351,18 @@ export function WalletProvider({ children }: WalletProviderProps) {
   }, []);
 
   const value: WalletContextType = {
-    currentAddress,
-    wallet,
-    node,
-    isLoading,
-    error,
-    isUsingEmbeddedWallet,
+    wallet: state.wallet,
+    node: state.node,
+    currentAddress: state.currentAddress,
+    isLoading: state.isLoading,
+    error: state.error,
+    isUsingEmbeddedWallet: state.isUsingEmbeddedWallet,
     discoverWallets,
     initiateConnection,
     confirmConnection,
     cancelConnection,
     setCurrentAddress,
+    setExternalWallet,
     disconnectWallet,
     onWalletDisconnect,
   };

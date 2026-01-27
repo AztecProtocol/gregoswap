@@ -12,14 +12,14 @@ import type { AztecAddress } from '@aztec/aztec.js/addresses';
 
 export function App() {
   const { disconnectWallet, setCurrentAddress, isUsingEmbeddedWallet, currentAddress, error: walletError, isLoading: walletLoading } = useWallet();
-  const { isOnboardingModalOpen, startOnboardingFlow, resetOnboarding } = useOnboarding();
+  const { isOnboardingModalOpen, startOnboarding, resetOnboarding } = useOnboarding();
 
   const handleWalletClick = () => {
     // If already connected, start a new onboarding flow to change wallet
     if (!isUsingEmbeddedWallet && currentAddress) {
       resetOnboarding();
     }
-    startOnboardingFlow('swap'); // Default to swap flow when clicked from wallet chip
+    startOnboarding(); // Start onboarding when clicked from wallet chip
   };
 
   const handleDisconnect = async () => {
