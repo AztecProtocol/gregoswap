@@ -10,7 +10,6 @@ import { Fr } from '@aztec/aztec.js/fields';
 import { useWallet } from './WalletContext';
 import { useNetwork } from './NetworkContext';
 import * as contractService from '../services/contractService';
-import * as dripService from '../services/dripService';
 import type { ContractsState, ContractsAction, ContractRegistrationStage } from '../types';
 
 const initialState: ContractsState = {
@@ -228,7 +227,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         throw new Error('ProofOfPassword contract not initialized');
       }
 
-      return dripService.executeDrip(state.contracts.pop, password, recipient);
+      return contractService.executeDrip(state.contracts.pop, password, recipient);
     },
     [state.contracts.pop],
   );

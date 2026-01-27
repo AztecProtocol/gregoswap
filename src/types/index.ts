@@ -117,6 +117,11 @@ export interface OnboardingResult {
 }
 
 /**
+ * Phases of a drip transaction
+ */
+export type DripPhase = 'idle' | 'sending' | 'mining' | 'success' | 'error';
+
+/**
  * State for onboarding reducer
  */
 export interface OnboardingState {
@@ -131,6 +136,9 @@ export interface OnboardingState {
   hasSimulated: boolean;
   // Whether we're in the drip detour (balance was 0)
   needsDrip: boolean;
+  // Drip execution state
+  dripPhase: DripPhase;
+  dripError: string | null;
 }
 
 /**
@@ -148,7 +156,12 @@ export type OnboardingAction =
   | { type: 'CLOSE_MODAL' }
   | { type: 'CLEAR_PENDING_SWAP' }
   | { type: 'SET_ERROR'; error: string }
-  | { type: 'RESET' };
+  | { type: 'RESET' }
+  // Drip execution actions
+  | { type: 'START_DRIP' }
+  | { type: 'DRIP_SUCCESS' }
+  | { type: 'DRIP_ERROR'; error: string }
+  | { type: 'DISMISS_DRIP_ERROR' };
 
 // =============================================================================
 // Swap Types
@@ -187,34 +200,6 @@ export type SwapAction =
   | { type: 'RESET' };
 
 // =============================================================================
-// Drip Types
-// =============================================================================
-
-/**
- * Phases of a drip transaction
- */
-export type DripPhase = 'idle' | 'sending' | 'mining' | 'success' | 'error';
-
-/**
- * State for drip reducer
- */
-export interface DripState {
-  phase: DripPhase;
-  error: string | null;
-}
-
-/**
- * Actions for drip reducer
- */
-export type DripAction =
-  | { type: 'START_DRIP' }
-  | { type: 'DRIP_MINING' }
-  | { type: 'DRIP_SUCCESS' }
-  | { type: 'DRIP_ERROR'; error: string }
-  | { type: 'DISMISS_ERROR' }
-  | { type: 'RESET' };
-
-// =============================================================================
 // Balances Types
 // =============================================================================
 
@@ -225,22 +210,6 @@ export interface Balances {
   gregoCoin: bigint | null;
   gregoCoinPremium: bigint | null;
 }
-
-/**
- * State for balances reducer
- */
-export interface BalancesState {
-  balances: Balances;
-  isLoading: boolean;
-}
-
-/**
- * Actions for balances reducer
- */
-export type BalancesAction =
-  | { type: 'SET_BALANCES'; gregoCoin: bigint; gregoCoinPremium: bigint }
-  | { type: 'SET_LOADING'; loading: boolean }
-  | { type: 'CLEAR' };
 
 // =============================================================================
 // Contract Types

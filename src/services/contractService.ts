@@ -9,12 +9,14 @@ import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import { AztecAddress as AztecAddressClass } from '@aztec/aztec.js/addresses';
 import { Fr } from '@aztec/aztec.js/fields';
 import { BatchCall, getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
+import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { SPONSORED_FPC_SALT } from '@aztec/constants';
+import type { TxReceipt } from '@aztec/stdlib/tx';
 import type { TokenContract } from '@aztec/noir-contracts.js/Token';
 import type { AMMContract } from '@aztec/noir-contracts.js/AMM';
 import type { ProofOfPasswordContract } from '../../contracts/target/ProofOfPassword';
 import { BigDecimal } from '../utils/bigDecimal';
-import type { NetworkConfig, Contracts, OnboardingResult } from '../types';
+import type { NetworkConfig, OnboardingResult } from '../types';
 
 /**
  * Contracts returned after swap registration
@@ -195,4 +197,94 @@ export async function simulateOnboardingQueries(
       gregoCoinPremium: gcpBalance,
     },
   };
+}
+
+/**
+ * Executes a token swap through the AMM
+ */
+export async function executeSwap(
+  contracts: SwapContracts,
+  fromAddress: AztecAddress,
+  amountOut: number,
+  amountInMax: number
+): Promise<TxReceipt> {
+  const { gregoCoin, gregoCoinPremium, amm } = contracts;
+
+  const authwitNonce = Fr.random();
+  return amm.methods
+    .swap_tokens_for_exact_tokens(
+      gregoCoin.address,
+      gregoCoinPremium.address,
+      BigInt(Math.round(amountOut)),
+      BigInt(Math.round(amountInMax)),
+      authwitNonce
+    )
+    .send({ from: fromAddress });
+}
+
+/**
+ * Parses a swap error into a user-friendly message
+ */
+export function parseSwapError(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return 'Swap failed. Please try again.';
+  }
+
+  const message = error.message;
+
+  if (message.includes('Simulation failed')) {
+    return message;
+  }
+  if (message.includes('User denied') || message.includes('rejected')) {
+    return 'Transaction was rejected in wallet';
+  }
+  if (message.includes('Insufficient') || message.includes('insufficient')) {
+    return 'Insufficient GregoCoin balance for swap';
+  }
+
+  return message;
+}
+
+/**
+ * Executes a drip (token claim) transaction
+ */
+export async function executeDrip(
+  pop: ProofOfPasswordContract,
+  password: string,
+  recipient: AztecAddress
+): Promise<TxReceipt> {
+  const { instance: sponsoredFPCInstance } = await getSponsoredFPCData();
+
+  return pop.methods.check_password_and_mint(password, recipient).send({
+    from: AztecAddressClass.ZERO,
+    fee: {
+      paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPCInstance.address),
+    },
+  });
+}
+
+/**
+ * Parses a drip error into a user-friendly message
+ */
+export function parseDripError(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return 'Failed to claim GregoCoin. Please try again.';
+  }
+
+  const message = error.message;
+
+  if (message.includes('Simulation failed')) {
+    return message;
+  }
+  if (message.includes('User denied') || message.includes('rejected')) {
+    return 'Transaction was rejected in wallet';
+  }
+  if (message.includes('password') || message.includes('Password')) {
+    return 'Invalid password. Please try again.';
+  }
+  if (message.includes('already claimed') || message.includes('Already claimed')) {
+    return 'You have already claimed your GregoCoin tokens.';
+  }
+
+  return message;
 }

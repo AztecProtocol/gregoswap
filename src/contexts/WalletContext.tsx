@@ -227,7 +227,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
     }
   }, []);
 
-  // Wallet discovery (kept for backward compatibility)
+  // Wallet discovery
   const discoverWallets = useCallback(
     (timeout?: number): DiscoverySession => {
       if (activeDiscoveryRef.current) {
@@ -240,7 +240,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
       activeDiscoveryRef.current = discovery;
       return discovery;
     },
-    [activeNetwork]
+    [activeNetwork],
   );
 
   // Initiate connection
@@ -282,7 +282,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
 
       return extensionWallet;
     },
-    [handleUnexpectedDisconnect]
+    [handleUnexpectedDisconnect],
   );
 
   // Cancel connection
@@ -296,13 +296,10 @@ export function WalletProvider({ children }: WalletProviderProps) {
   }, []);
 
   // Set external wallet (called from WalletConnectionContext)
-  const setExternalWallet = useCallback(
-    (wallet: Wallet) => {
-      hasConnectedExternalWalletRef.current = true;
-      dispatch({ type: 'SET_EXTERNAL', wallet });
-    },
-    []
-  );
+  const setExternalWallet = useCallback((wallet: Wallet) => {
+    hasConnectedExternalWalletRef.current = true;
+    dispatch({ type: 'SET_EXTERNAL', wallet });
+  }, []);
 
   // Disconnect wallet
   const disconnectWallet = useCallback(async () => {

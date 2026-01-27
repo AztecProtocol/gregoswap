@@ -5,9 +5,7 @@
 
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { useContracts } from './ContractsContext';
-import { useWallet } from './WalletContext';
 import { useOnboarding } from './OnboardingContext';
-import { useBalances } from './BalancesContext';
 import type { SwapState, SwapAction } from '../types';
 import { GREGOCOIN_USD_PRICE, EXCHANGE_RATE_POLL_INTERVAL_MS } from '../types';
 
@@ -124,9 +122,13 @@ interface SwapProviderProps {
 
 export function SwapProvider({ children }: SwapProviderProps) {
   const { swap, isLoadingContracts, getExchangeRate } = useContracts();
-  const { currentAddress } = useWallet();
-  const { status: onboardingStatus, onboardingResult, isSwapPending, isDripPending, clearSwapPending } = useOnboarding();
-  const { refetch: refetchBalances } = useBalances();
+  const {
+    status: onboardingStatus,
+    onboardingResult,
+    isSwapPending,
+    isDripPending,
+    clearSwapPending,
+  } = useOnboarding();
   const [state, dispatch] = useReducer(swapReducer, initialState);
 
   // Refs for rate fetching and orchestration
@@ -192,15 +194,6 @@ export function SwapProvider({ children }: SwapProviderProps) {
       clearSwapPending();
     }
   }, [isSwapPending, isSwapping, clearSwapPending]);
-
-  // Refresh balances after successful swap
-  useEffect(() => {
-    if (state.phase === 'success') {
-      refetchBalances();
-      const timer = setTimeout(() => dispatch({ type: 'RESET' }), 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [state.phase, refetchBalances]);
 
   // Recalculate amounts when exchange rate becomes available
   useEffect(() => {
@@ -287,7 +280,7 @@ export function SwapProvider({ children }: SwapProviderProps) {
         }
       }
     },
-    [state.exchangeRate]
+    [state.exchangeRate],
   );
 
   const setToAmount = useCallback(
@@ -303,7 +296,7 @@ export function SwapProvider({ children }: SwapProviderProps) {
         }
       }
     },
-    [state.exchangeRate]
+    [state.exchangeRate],
   );
 
   const dismissError = useCallback(() => {

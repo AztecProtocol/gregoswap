@@ -4,12 +4,13 @@
  * Single unified flow: connect → register → simulate → [if no balance: drip detour] → completed
  */
 
-import { createContext, useContext, useReducer, useCallback, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useReducer, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import { useWallet } from './WalletContext';
 import { useContracts } from './ContractsContext';
-import type { OnboardingStatus, OnboardingStep, OnboardingResult, OnboardingState, OnboardingAction } from '../types';
+import type { OnboardingStatus, OnboardingStep, OnboardingResult, OnboardingState, OnboardingAction, DripPhase } from '../types';
 import { ONBOARDING_STEPS, ONBOARDING_STEPS_WITH_DRIP } from '../types';
+import { parseDripError } from '../services/contractService';
 
 export type { OnboardingStatus, OnboardingStep };
 export { ONBOARDING_STEPS, ONBOARDING_STEPS_WITH_DRIP };
@@ -24,6 +25,8 @@ const initialState: OnboardingState = {
   hasRegisteredBase: false,
   hasSimulated: false,
   needsDrip: false,
+  dripPhase: 'idle',
+  dripError: null,
 };
 
 function onboardingReducer(state: OnboardingState, action: OnboardingAction): OnboardingState {
@@ -106,6 +109,35 @@ function onboardingReducer(state: OnboardingState, action: OnboardingAction): On
     case 'RESET':
       return initialState;
 
+    // Drip execution actions
+    case 'START_DRIP':
+      return {
+        ...state,
+        dripPhase: 'sending',
+        dripError: null,
+      };
+
+    case 'DRIP_SUCCESS':
+      return {
+        ...state,
+        dripPhase: 'success',
+        dripError: null,
+      };
+
+    case 'DRIP_ERROR':
+      return {
+        ...state,
+        dripPhase: 'error',
+        dripError: action.error,
+      };
+
+    case 'DISMISS_DRIP_ERROR':
+      return {
+        ...state,
+        dripPhase: 'idle',
+        dripError: null,
+      };
+
     default:
       return state;
   }
@@ -153,6 +185,11 @@ interface OnboardingContextType {
   hasRegisteredBase: boolean;
   hasSimulated: boolean;
 
+  // Drip execution state
+  dripPhase: DripPhase;
+  dripError: string | null;
+  isDripping: boolean;
+
   // Actions
   startOnboarding: (initiatedSwap?: boolean) => void;
   advanceStatus: (status: OnboardingStatus) => void;
@@ -165,6 +202,7 @@ interface OnboardingContextType {
   completeDripExecution: () => void;
   clearDripPassword: () => void;
   resetOnboarding: () => void;
+  dismissDripError: () => void;
 }
 
 const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
@@ -192,8 +230,11 @@ function setStoredOnboardingStatus(address: AztecAddress | null, completed: bool
 
 export function OnboardingProvider({ children }: OnboardingProviderProps) {
   const { currentAddress, isUsingEmbeddedWallet } = useWallet();
-  const { simulateOnboardingQueries, isLoadingContracts, registerBaseContracts, registerDripContracts } = useContracts();
+  const { simulateOnboardingQueries, isLoadingContracts, registerBaseContracts, registerDripContracts, drip } = useContracts();
   const [state, dispatch] = useReducer(onboardingReducer, initialState);
+
+  // Ref to prevent duplicate drip execution
+  const dripTriggeredRef = useRef(false);
 
   // Computed values
   const steps = state.needsDrip ? ONBOARDING_STEPS_WITH_DRIP : ONBOARDING_STEPS;
@@ -201,6 +242,7 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
   const totalSteps = state.needsDrip ? 5 : 4;
   const isSwapPending = state.status === 'completed' && state.pendingSwap;
   const isDripPending = state.status === 'executing_drip' && state.dripPassword !== null;
+  const isDripping = state.dripPhase === 'sending' || state.dripPhase === 'mining';
 
   // Onboarding orchestration effect
   useEffect(() => {
@@ -276,6 +318,31 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     registerDripContracts,
   ]);
 
+  // Drip execution effect - triggers when password is provided during onboarding
+  useEffect(() => {
+    async function handleDrip() {
+      if (!isDripPending || !state.dripPassword || isDripping || dripTriggeredRef.current || !currentAddress) {
+        return;
+      }
+
+      dripTriggeredRef.current = true;
+      dispatch({ type: 'START_DRIP' });
+
+      try {
+        await drip(state.dripPassword, currentAddress);
+        dispatch({ type: 'DRIP_SUCCESS' });
+        setStoredOnboardingStatus(currentAddress, true);
+        dispatch({ type: 'COMPLETE' });
+      } catch (error) {
+        dispatch({ type: 'DRIP_ERROR', error: parseDripError(error) });
+      } finally {
+        dripTriggeredRef.current = false;
+      }
+    }
+
+    handleDrip();
+  }, [isDripPending, state.dripPassword, isDripping, currentAddress, drip]);
+
   // Actions
   const startOnboarding = useCallback((initiatedSwap: boolean = false) => {
     dispatch({ type: 'START_FLOW', initiatedSwap });
@@ -322,6 +389,10 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     dispatch({ type: 'RESET' });
   }, []);
 
+  const dismissDripError = useCallback(() => {
+    dispatch({ type: 'DISMISS_DRIP_ERROR' });
+  }, []);
+
   const value: OnboardingContextType = {
     status: state.status,
     error: state.error,
@@ -336,6 +407,9 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     dripPassword: state.dripPassword,
     hasRegisteredBase: state.hasRegisteredBase,
     hasSimulated: state.hasSimulated,
+    dripPhase: state.dripPhase,
+    dripError: state.dripError,
+    isDripping,
     startOnboarding,
     advanceStatus,
     setOnboardingResult,
@@ -347,6 +421,7 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     completeDripExecution,
     clearDripPassword,
     resetOnboarding,
+    dismissDripError,
   };
 
   return <OnboardingContext.Provider value={value}>{children}</OnboardingContext.Provider>;

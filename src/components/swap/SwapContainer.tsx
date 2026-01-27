@@ -3,12 +3,11 @@
  * Main swap interface using contexts
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Paper, Box } from '@mui/material';
 import SwapVertIcon from '@mui/icons-material/SwapVert';
 import { SwapBox } from './SwapBox';
 import { SwapProgress } from './SwapProgress';
-import { DripProgress } from './DripProgress';
 import { ExchangeRateDisplay } from './ExchangeRateDisplay';
 import { SwapButton } from './SwapButton';
 import { SwapErrorAlert } from './SwapErrorAlert';
@@ -16,13 +15,19 @@ import { useContracts } from '../../contexts/ContractsContext';
 import { useWallet } from '../../contexts/WalletContext';
 import { useOnboarding } from '../../contexts/OnboardingContext';
 import { useSwap } from '../../contexts/SwapContext';
-import { useBalances } from '../../contexts/BalancesContext';
-import { useDrip } from '../../contexts/DripContext';
+import type { Balances } from '../../types';
 
 export function SwapContainer() {
-  const { isLoadingContracts } = useContracts();
+  const { isLoadingContracts, fetchBalances } = useContracts();
   const { isUsingEmbeddedWallet, currentAddress } = useWallet();
-  const { status: onboardingStatus, startOnboarding } = useOnboarding();
+  const {
+    status: onboardingStatus,
+    startOnboarding,
+    isDripping,
+    dripPhase,
+    dripError,
+    dismissDripError,
+  } = useOnboarding();
 
   const {
     fromAmount,
@@ -41,10 +46,43 @@ export function SwapContainer() {
     dismissError: dismissSwapError,
   } = useSwap();
 
-  const { balances, isLoading: isLoadingBalances } = useBalances();
-  const { isDripping, phase: dripPhase, error: dripError, dismissError: dismissDripError } = useDrip();
+  // Local balance state
+  const [balances, setBalances] = useState<Balances>({ gregoCoin: null, gregoCoinPremium: null });
+  const [isLoadingBalances, setIsLoadingBalances] = useState(false);
 
   const swapErrorRef = useRef<HTMLDivElement | null>(null);
+
+  // Fetch balances
+  const refetchBalances = useCallback(async () => {
+    if (isUsingEmbeddedWallet || !currentAddress) {
+      setBalances({ gregoCoin: null, gregoCoinPremium: null });
+      return;
+    }
+
+    setIsLoadingBalances(true);
+    try {
+      const [gcBalance, gcpBalance] = await fetchBalances();
+      setBalances({ gregoCoin: gcBalance, gregoCoinPremium: gcpBalance });
+    } catch {
+      setBalances({ gregoCoin: null, gregoCoinPremium: null });
+    } finally {
+      setIsLoadingBalances(false);
+    }
+  }, [fetchBalances, currentAddress, isUsingEmbeddedWallet]);
+
+  // Clear balances when switching to embedded wallet or losing address
+  useEffect(() => {
+    if (isUsingEmbeddedWallet || !currentAddress) {
+      setBalances({ gregoCoin: null, gregoCoinPremium: null });
+    }
+  }, [isUsingEmbeddedWallet, currentAddress]);
+
+  // Refetch balances when drip succeeds
+  useEffect(() => {
+    if (dripPhase === 'success') {
+      refetchBalances();
+    }
+  }, [dripPhase, refetchBalances]);
 
   // Scroll to error when it appears
   useEffect(() => {
@@ -170,9 +208,7 @@ export function SwapContainer() {
       <ExchangeRateDisplay exchangeRate={exchangeRate} isLoadingRate={isLoadingRate} />
 
       {/* Swap Button or Progress */}
-      {isDripping ? (
-        <DripProgress phase={dripPhase === 'sending' || dripPhase === 'mining' ? dripPhase : undefined} />
-      ) : isSwapping ? (
+      {isSwapping ? (
         <SwapProgress phase={swapPhase === 'sending' || swapPhase === 'mining' ? swapPhase : undefined} />
       ) : (
         <SwapButton

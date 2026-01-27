@@ -5,5 +5,3 @@
 
 export * from './walletService';
 export * from './contractService';
-export * from './swapService';
-export * from './dripService';
