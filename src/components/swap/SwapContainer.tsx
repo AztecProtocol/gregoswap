@@ -14,7 +14,6 @@ import { useWallet } from '../../contexts/WalletContext';
 import { useOnboarding } from '../../contexts/OnboardingContext';
 import { useSwap } from '../../hooks/useSwap';
 import { useBalances } from '../../hooks/useBalances';
-import { waitForTxWithPhases } from '../../utils/txUtils';
 
 export function SwapContainer() {
   const { isLoadingContracts, drip } = useContracts();
@@ -184,8 +183,7 @@ export function SwapContainer() {
       clearDripPassword();
 
       try {
-        const sentTx = await drip(dripPassword, currentAddress);
-        await waitForTxWithPhases(sentTx, setDripPhase);
+        await drip(dripPassword, currentAddress);
 
         // Success - refresh balances and clear state
         refetchBalances();

@@ -86,15 +86,16 @@ async function createAccount(wallet: TestWallet) {
   const deployMethod = await accountManager.getDeployMethod();
   const sponsoredPFCContract = await getSponsoredPFCContract();
   const paymentMethod = new SponsoredFeePaymentMethod(sponsoredPFCContract.address);
-  const deployOpts: DeployAccountOptions = {
+  const deployOpts = {
     from: AztecAddress.ZERO,
     fee: {
       paymentMethod,
     },
     skipClassPublication: true,
     skipInstancePublication: true,
+    wait: { timeout: 120 },
   };
-  await deployMethod.send(deployOpts).wait({ timeout: 120 });
+  await deployMethod.send(deployOpts);
 
   return {
     address: accountManager.address,
@@ -109,32 +110,44 @@ async function deployContracts(wallet: TestWallet, deployer: AztecAddress) {
 
   const contractAddressSalt = Fr.random();
 
-  const gregoCoin = await TokenContract.deploy(wallet, deployer, 'GregoCoin', 'GRG', 18)
-    .send({ from: deployer, fee: { paymentMethod }, contractAddressSalt })
-    .deployed({ timeout: 120 });
+  const gregoCoin = await TokenContract.deploy(wallet, deployer, 'GregoCoin', 'GRG', 18).send({
+    from: deployer,
+    fee: { paymentMethod },
+    contractAddressSalt,
+    wait: { timeout: 120 },
+  });
 
-  const gregoCoinPremium = await TokenContract.deploy(wallet, deployer, 'GregoCoinPremium', 'GRGP', 18)
-    .send({ from: deployer, fee: { paymentMethod }, contractAddressSalt })
-    .deployed({ timeout: 120 });
+  const gregoCoinPremium = await TokenContract.deploy(wallet, deployer, 'GregoCoinPremium', 'GRGP', 18).send({
+    from: deployer,
+    fee: { paymentMethod },
+    contractAddressSalt,
+    wait: { timeout: 120 },
+  });
 
-  const liquidityToken = await TokenContract.deploy(wallet, deployer, 'LiquidityToken', 'LQT', 18)
-    .send({ from: deployer, fee: { paymentMethod }, contractAddressSalt })
-    .deployed({ timeout: 120 });
+  const liquidityToken = await TokenContract.deploy(wallet, deployer, 'LiquidityToken', 'LQT', 18).send({
+    from: deployer,
+    fee: { paymentMethod },
+    contractAddressSalt,
+    wait: { timeout: 120 },
+  });
 
-  const amm = await AMMContract.deploy(wallet, gregoCoin.address, gregoCoinPremium.address, liquidityToken.address)
-    .send({ from: deployer, fee: { paymentMethod }, contractAddressSalt })
-    .deployed({ timeout: 120 });
+  const amm = await AMMContract.deploy(
+    wallet,
+    gregoCoin.address,
+    gregoCoinPremium.address,
+    liquidityToken.address,
+  ).send({ from: deployer, fee: { paymentMethod }, contractAddressSalt, wait: { timeout: 120 } });
 
-  await liquidityToken.methods.set_minter(amm.address, true).send({ from: deployer, fee: { paymentMethod } }).wait();
+  await liquidityToken.methods
+    .set_minter(amm.address, true)
+    .send({ from: deployer, fee: { paymentMethod }, wait: { timeout: 120 } });
 
   await gregoCoin.methods
     .mint_to_private(deployer, INITIAL_TOKEN_BALANCE)
-    .send({ from: deployer, fee: { paymentMethod } })
-    .wait({ timeout: 120 });
+    .send({ from: deployer, fee: { paymentMethod }, wait: { timeout: 120 } });
   await gregoCoinPremium.methods
     .mint_to_private(deployer, INITIAL_TOKEN_BALANCE)
-    .send({ from: deployer, fee: { paymentMethod } })
-    .wait({ timeout: 120 });
+    .send({ from: deployer, fee: { paymentMethod }, wait: { timeout: 120 } });
 
   const nonceForAuthwits = Fr.random();
   const token0Authwit = await wallet.createAuthWit(deployer, {
@@ -165,16 +178,18 @@ async function deployContracts(wallet: TestWallet, deployer: AztecAddress) {
       nonceForAuthwits,
     )
     .with({ authWitnesses: [token0Authwit, token1Authwit] });
-  await addLiquidityInteraction.send({ from: deployer, fee: { paymentMethod } }).wait({ timeout: 120 });
+  await addLiquidityInteraction.send({ from: deployer, fee: { paymentMethod }, wait: { timeout: 120 } });
 
-  const pop = await ProofOfPasswordContract.deploy(wallet, gregoCoin.address, PASSWORD)
-    .send({ from: deployer, contractAddressSalt, fee: { paymentMethod } })
-    .deployed({ timeout: 120 });
+  const pop = await ProofOfPasswordContract.deploy(wallet, gregoCoin.address, PASSWORD).send({
+    from: deployer,
+    contractAddressSalt,
+    fee: { paymentMethod },
+    wait: { timeout: 120 },
+  });
 
   await gregoCoin.methods
     .set_minter(pop.address, true)
-    .send({ from: deployer, fee: { paymentMethod } })
-    .wait({ timeout: 120 });
+    .send({ from: deployer, fee: { paymentMethod }, wait: { timeout: 120 } });
 
   return {
     gregoCoinAddress: gregoCoin.address.toString(),

@@ -5,21 +5,22 @@ import { useWallet } from './WalletContext';
 import { useNetwork } from './NetworkContext';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { Fr } from '@aztec/aztec.js/fields';
-import { BatchCall, getContractInstanceFromInstantiationParams, type SentTx } from '@aztec/aztec.js/contracts';
+import { BatchCall, getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { SPONSORED_FPC_SALT } from '@aztec/constants';
 import type { ProofOfPasswordContract } from '../../contracts/target/ProofOfPassword.ts';
 import { BigDecimal } from '../utils/bigDecimal.ts';
+import type { TxReceipt } from '@aztec/stdlib/tx';
 
 interface ContractsContextType {
   isLoadingContracts: boolean;
   // Utility methods
   getExchangeRate: () => Promise<number>;
-  swap: (amountOut: number, amountInMax: number) => Promise<SentTx>;
+  swap: (amountOut: number, amountInMax: number) => Promise<TxReceipt>;
   fetchBalances: () => Promise<[bigint, bigint]>;
   simulateOnboardingQueries: () => Promise<[number, bigint, bigint]>;
   registerContractsForFlow: (flowType: 'swap' | 'drip' | 'gregocoin-only') => Promise<void>;
-  drip: (password: string, recipient: AztecAddress) => Promise<SentTx>;
+  drip: (password: string, recipient: AztecAddress) => Promise<TxReceipt>;
 }
 
 const ContractsContext = createContext<ContractsContextType | undefined>(undefined);

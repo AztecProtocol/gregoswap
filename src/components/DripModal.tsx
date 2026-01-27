@@ -16,7 +16,6 @@ import WaterDropIcon from '@mui/icons-material/WaterDrop';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useContracts } from '../contexts/ContractsContext';
 import { useWallet } from '../contexts/WalletContext';
-import { waitForTxWithPhases } from '../utils/txUtils';
 
 interface DripModalProps {
   open: boolean;
@@ -54,8 +53,7 @@ export function DripModal({ open, onClose, onSuccess }: DripModalProps) {
     setCurrentPhase('sending');
 
     try {
-      const sentTx = await drip(password, currentAddress);
-      await waitForTxWithPhases(sentTx, setCurrentPhase);
+      await drip(password, currentAddress);
       setSuccess(true);
       setPassword('');
       // Trigger success callback (e.g., refresh balances)
@@ -119,9 +117,9 @@ export function DripModal({ open, onClose, onSuccess }: DripModalProps) {
               type="password"
               label="Password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={e => setPassword(e.target.value)}
               disabled={isDripping}
-              onKeyPress={(e) => {
+              onKeyPress={e => {
                 if (e.key === 'Enter' && password && !isDripping) {
                   handleDrip();
                 }

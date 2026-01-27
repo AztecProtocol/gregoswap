@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useContracts } from '../contexts/ContractsContext';
 import { useOnboarding } from '../contexts/OnboardingContext';
-import { waitForTxWithPhases } from '../utils/txUtils';
 
 interface UseSwapProps {
   fromAmount: string;
@@ -34,7 +33,12 @@ interface UseSwapReturn {
 
 const GREGOCOIN_USD_PRICE = 10;
 
-export function useSwap({ fromAmount, toAmount, isDripping = false, fromTokenBalance = null }: UseSwapProps): UseSwapReturn {
+export function useSwap({
+  fromAmount,
+  toAmount,
+  isDripping = false,
+  fromTokenBalance = null,
+}: UseSwapProps): UseSwapReturn {
   // Pull from contexts
   const { swap, isLoadingContracts, getExchangeRate } = useContracts();
   const { status: onboardingStatus, onboardingResult, isSwapPending, isDripPending } = useOnboarding();
@@ -158,8 +162,7 @@ export function useSwap({ fromAmount, toAmount, isDripping = false, fromTokenBal
     setSwapPhase('sending');
 
     try {
-      const sentTx = await swap(parseFloat(toAmount), parseFloat(fromAmount) * 1.1);
-      await waitForTxWithPhases(sentTx, setSwapPhase);
+      await swap(parseFloat(toAmount), parseFloat(fromAmount) * 1.1);
     } catch (error) {
       let errorMessage = 'Swap failed. Please try again.';
 
