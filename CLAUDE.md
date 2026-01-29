@@ -5,12 +5,14 @@
 GregoSwap is a decentralized token swap application built on the Aztec blockchain. It demonstrates private token swaps using an Automated Market Maker (AMM), with a token faucet (drip) mechanism using proof-of-password.
 
 **Key Features:**
+
 - Private token swaps (GregoCoin ↔ GregoCoinPremium) via AMM
 - Token faucet with proof-of-password (PoP) contract
 - Multi-flow onboarding supporting embedded and external wallets
 - Network switching (local sandbox / devnet)
 
 **Tech Stack:**
+
 - React 18 + TypeScript
 - Material-UI (MUI) component library
 - Vite build tooling
@@ -83,10 +85,11 @@ export const useSwapReducer = createReducerHook(swapReducer, swapActions, initia
 
 // Usage in context:
 const [state, actions] = useSwapReducer();
-actions.setFromAmount('100');  // Type-safe, no dispatch() needed
+actions.setFromAmount('100'); // Type-safe, no dispatch() needed
 ```
 
 **Key benefits:**
+
 - Type-safe action creators
 - No dispatch callback boilerplate
 - Actions bound automatically via `bindActions()`
@@ -94,6 +97,7 @@ actions.setFromAmount('100');  // Type-safe, no dispatch() needed
 ### Reducer File Structure
 
 Each reducer.ts exports:
+
 - **State type and initial state** (e.g., `SwapState`, `initialSwapState`)
 - **Actions object** with action creators (e.g., `swapActions`)
 - **Action union type** via `ActionsFrom<typeof actions>`
@@ -107,11 +111,13 @@ Each reducer.ts exports:
 **Purpose:** Network selection and configuration
 
 **State:**
+
 - `activeNetwork: NetworkConfig` - Currently selected network
 - `availableNetworks: NetworkConfig[]` - All discovered networks
 - `isLoading: boolean`
 
 **Key behavior:**
+
 - Loads network configs from `src/config/networks/deployed-addresses.json`
 - Persists selection to localStorage
 - Excludes local network in production builds
@@ -121,6 +127,7 @@ Each reducer.ts exports:
 **Purpose:** Wallet instance management (embedded vs external)
 
 **State:**
+
 - `wallet: Wallet | null` - Active wallet
 - `node: AztecNode | null` - Aztec node client
 - `currentAddress: AztecAddress | null` - Selected account
@@ -128,6 +135,7 @@ Each reducer.ts exports:
 - `isLoading: boolean` / `error: string | null`
 
 **Key methods:**
+
 ```typescript
 discoverWallets(timeout?): DiscoverySession
 initiateConnection(provider): Promise<PendingConnection>
@@ -139,6 +147,7 @@ onWalletDisconnect(callback): () => void  // Returns unsubscribe
 ```
 
 **Key behavior:**
+
 - Auto-creates embedded wallet on network change
 - Manages disconnect callback registry
 - Reverts to embedded wallet on external disconnect
@@ -148,10 +157,12 @@ onWalletDisconnect(callback): () => void  // Returns unsubscribe
 **Purpose:** Contract instances and registration
 
 **State:**
+
 - `contracts: { gregoCoin, gregoCoinPremium, amm, pop }`
 - `isLoading: boolean`
 
 **Key methods:**
+
 ```typescript
 registerBaseContracts(): Promise<void>    // AMM + tokens
 registerDripContracts(): Promise<void>    // PoP contract
@@ -167,6 +178,7 @@ drip(password, recipient): Promise<TxReceipt>
 **Purpose:** Orchestrates multi-step onboarding flow
 
 **Status flow:**
+
 ```
 idle → connecting → registering → simulating →
   [if balance=0] → registering_drip → awaiting_drip → executing_drip →
@@ -174,6 +186,7 @@ completed
 ```
 
 **State:**
+
 - `status: OnboardingStatus` - Current flow state
 - `result: OnboardingResult | null` - Simulation results
 - `needsDrip: boolean` - User needs to claim tokens
@@ -183,6 +196,7 @@ completed
 - `hasRegisteredBase/hasSimulated` - Tracking flags
 
 **Key behavior:**
+
 - Effects drive automatic state transitions
 - Checks balance after simulation to determine drip need
 - Persists completion to localStorage per address
@@ -192,6 +206,7 @@ completed
 **Purpose:** Swap UI state and execution
 
 **State:**
+
 - `fromAmount: string` / `toAmount: string`
 - `exchangeRate: number | null`
 - `isLoadingRate: boolean`
@@ -199,6 +214,7 @@ completed
 - `error: string | null`
 
 **Computed values (in context):**
+
 - `fromAmountUSD` / `toAmountUSD`
 - `canSwap` - Whether swap button is enabled
 - `isSwapping` - phase === 'sending'
@@ -387,6 +403,7 @@ yarn serve
 ## Theme (src/theme.ts)
 
 **Color palette:**
+
 - Primary: Chartreuse green (#D4FF28) - Aztec branded
 - Secondary: Deep purple (#80336A)
 - Background: Pure black (#000000)
@@ -423,6 +440,7 @@ Used for exchange rate calculations with 18 decimal precision.
 ## Common Pitfalls
 
 1. **Don't use re-exports** - Import directly from specific files
+
    ```typescript
    // WRONG
    import { useWallet } from '../contexts';
@@ -459,7 +477,7 @@ Used for exchange rate calculations with 18 decimal precision.
 
 ## Version Information
 
-- **Aztec SDK:** v4.0.0-nightly.20260126
+- **Aztec SDK:** v4.0.0-nightly.20260128
 - **React:** 18.3.1
 - **Vite:** 7.1.4
 - **Node.js:** v22+

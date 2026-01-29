@@ -1,6 +1,5 @@
 {
   "id": "devnet",
-  "name": "Devnet",
   "nodeUrl": "https://next.devnet.aztec-labs.com",
   "chainId": "11155111",
   "rollupVersion": "1647720761",

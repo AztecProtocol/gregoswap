@@ -9,9 +9,11 @@ import CloseIcon from '@mui/icons-material/Close';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { useOnboarding } from '../contexts/onboarding';
 import { useWallet } from '../contexts/wallet';
+import { useNetwork } from '../contexts/network';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { Aliased } from '@aztec/aztec.js/wallet';
 import type { WalletProvider, PendingConnection } from '@aztec/wallet-sdk/manager';
+import { createGregoSwapCapabilities } from '../config/capabilities';
 import {
   OnboardingProgress,
   WalletDiscovery,
@@ -42,8 +44,12 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
     closeModal,
     completeDripOnboarding,
     isSwapPending,
+    dripPhase,
+    dripError,
+    dismissDripError,
   } = useOnboarding();
   const { discoverWallets, initiateConnection, confirmConnection, cancelConnection, onWalletDisconnect } = useWallet();
+  const { activeNetwork } = useNetwork();
 
   // Wallet connection state
   const [accounts, setAccounts] = useState<Aliased<AztecAddress>[]>([]);
@@ -162,11 +168,22 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
       setIsLoadingAccounts(true);
 
       const wallet = await confirmConnection(selectedWallet, pendingConnection);
-      const walletAccounts = await wallet.getAccounts();
 
-      if (!walletAccounts || walletAccounts.length === 0) {
-        throw new Error('No accounts found in wallet. Please create an account in your Aztec wallet.');
+      // Request capabilities with full manifest (includes account selection)
+      const manifest = createGregoSwapCapabilities(activeNetwork);
+      const capabilitiesResponse = await wallet.requestCapabilities(manifest);
+
+      // Extract granted accounts from capability response
+      const accountsCapability = capabilitiesResponse.granted.find(cap => cap.type === 'accounts') as
+        | (typeof capabilitiesResponse.granted[0] & { accounts?: Aliased<AztecAddress>[] })
+        | undefined;
+
+      if (!accountsCapability || !accountsCapability.accounts || accountsCapability.accounts.length === 0) {
+        throw new Error('No accounts were granted. Please select at least one account in your wallet.');
       }
+
+      // Accounts are already in Aliased format from wallet response
+      const walletAccounts: Aliased<AztecAddress>[] = accountsCapability.accounts;
 
       setAccounts(walletAccounts);
       setConnectionPhase('selecting_account');
@@ -328,6 +345,26 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
             {/* Drip Password Input (shown when balance is 0) */}
             <Collapse in={status === 'awaiting_drip'} timeout={400}>
               {status === 'awaiting_drip' && <DripPasswordInput onSubmit={completeDripOnboarding} />}
+            </Collapse>
+
+            {/* Drip Error Display (shown when drip fails during execution) */}
+            <Collapse in={status === 'executing_drip' && dripPhase === 'error'} timeout={400}>
+              {status === 'executing_drip' && dripPhase === 'error' && (
+                <Box sx={{ mt: 3 }}>
+                  <Alert
+                    severity="error"
+                    sx={{ mb: 2 }}
+                    action={
+                      <Button size="small" color="inherit" onClick={dismissDripError}>
+                        Retry
+                      </Button>
+                    }
+                  >
+                    {dripError || 'Failed to claim tokens. Please try again.'}
+                  </Alert>
+                  <DripPasswordInput onSubmit={completeDripOnboarding} />
+                </Box>
+              )}
             </Collapse>
           </>
         )}

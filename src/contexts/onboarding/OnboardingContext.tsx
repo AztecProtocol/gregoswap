@@ -174,7 +174,7 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
   // Drip execution effect - triggers when password is provided during onboarding
   useEffect(() => {
     async function handleDrip() {
-      if (!isDripPending || !state.dripPassword || isDripping || dripTriggeredRef.current || !currentAddress) {
+      if (!isDripPending || !state.dripPassword || isDripping || state.dripPhase === 'error' || dripTriggeredRef.current || !currentAddress) {
         return;
       }
 

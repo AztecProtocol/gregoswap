@@ -1,6 +1,5 @@
 export interface NetworkConfig {
   id: string;
-  name: string;
   nodeUrl: string;
   chainId: string;
   rollupVersion: string;

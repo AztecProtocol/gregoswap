@@ -16,7 +16,7 @@ import type { TokenContract } from '@aztec/noir-contracts.js/Token';
 import type { AMMContract } from '@aztec/noir-contracts.js/AMM';
 import type { ProofOfPasswordContract } from '../../contracts/target/ProofOfPassword';
 import { BigDecimal } from '../utils/bigDecimal';
-import type { NetworkConfig } from '../types';
+import type { NetworkConfig } from '../config/networks';
 import type { OnboardingResult } from '../contexts/onboarding/reducer';
 
 /**
