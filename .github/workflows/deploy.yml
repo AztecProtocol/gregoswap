@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - main
+      - next
   workflow_dispatch:
 
 env:
@@ -60,7 +61,11 @@ jobs:
       - name: Deploy to Vercel
         id: deploy
         run: |
-          DEPLOY_URL=$(vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes)
+          if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            DEPLOY_URL=$(vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes)
+          else
+            DEPLOY_URL=$(vercel deploy --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes)
+          fi
           echo "url=$DEPLOY_URL" >> $GITHUB_OUTPUT
 
       - name: Comment deployment URL on PR
