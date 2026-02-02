@@ -43,9 +43,15 @@ jobs:
           echo "Installing Aztec toolchain for version: $VERSION_NO_V"
           curl -sL "https://install.aztec.network/$VERSION_NO_V/" | bash
           echo "Running aztec-up to install tools..."
-          ~/.aztec/bin/aztec-up install $VERSION_NO_V
+          echo "Command: ~/.aztec/bin/aztec-up install $VERSION_NO_V"
+          ~/.aztec/bin/aztec-up install $VERSION_NO_V || echo "aztec-up failed with exit code $?"
           echo "Installation completed"
+          echo "Checking what was installed:"
           ls -la ~/.aztec/bin/
+          echo "Checking for version-specific directory:"
+          ls -la ~/.aztec/ || true
+          echo "Checking nargo path:"
+          ls -la ~/nargo/ || true
 
       - name: Update path
         run: echo "/home/runner/.aztec/bin" >> $GITHUB_PATH
