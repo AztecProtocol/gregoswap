@@ -39,12 +39,9 @@ jobs:
       - name: Set Aztec version
         run: |
           VERSION=$(jq -r '.dependencies["@aztec/aztec.js"]' package.json)
-          aztec-up install $VERSION
-
-      - name: Install Aztec CLI
-        run: |
-          curl -s https://install.aztec.network/4.0.0-nightly.20260126/ > tmp.sh
+          curl -s https://install.aztec.network/$VERSION/ > tmp.sh
           bash tmp.sh <<< yes "yes"
+          aztec-up install $VERSION
 
       - name: Update path
         run: echo "/home/runner/.aztec/bin" >> $GITHUB_PATH
