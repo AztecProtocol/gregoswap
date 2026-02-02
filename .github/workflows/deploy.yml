@@ -36,12 +36,13 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Set Aztec version
+      - name: Install Aztec CLI
         run: |
           VERSION=$(jq -r '.dependencies["@aztec/aztec.js"]' package.json)
-          curl -s https://install.aztec.network/$VERSION/ > tmp.sh
+          VERSION_NO_V=${VERSION#v}
+          curl -s https://install.aztec.network/$VERSION_NO_V/ > tmp.sh
           bash tmp.sh <<< yes "yes"
-          aztec-up install $VERSION
+          aztec-up install $VERSION_NO_V
 
       - name: Update path
         run: echo "/home/runner/.aztec/bin" >> $GITHUB_PATH
