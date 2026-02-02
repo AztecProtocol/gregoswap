@@ -36,25 +36,12 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Setup Foundry
-        run: |
-          # Install foundryup manually
-          mkdir -p ~/.foundry/bin
-          curl -L https://foundry.paradigm.xyz/foundryup -o ~/.foundry/bin/foundryup
-          chmod +x ~/.foundry/bin/foundryup
-          # Add to PATH for this and subsequent steps
-          echo "$HOME/.foundry/bin" >> $GITHUB_PATH
-          export PATH="$HOME/.foundry/bin:$PATH"
-          # Verify foundryup is available
-          which foundryup
-          echo "Foundryup installed successfully"
-
       - name: Install Aztec CLI
         run: |
           VERSION=$(jq -r '.dependencies["@aztec/aztec.js"]' package.json)
           VERSION_NO_V=${VERSION#v}
           echo "Running version-specific installer for $VERSION_NO_V..."
-          curl -fsSL "https://install.aztec.network/$VERSION_NO_V/install" | VERSION="$VERSION_NO_V" bash
+          SHELL=/bin/bash curl -fsSL "https://install.aztec.network/$VERSION_NO_V/install" | VERSION="$VERSION_NO_V" bash
           echo "Installation completed"
           ls -la ~/.aztec/versions/$VERSION_NO_V/bin/
 
