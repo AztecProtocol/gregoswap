@@ -39,6 +39,7 @@ jobs:
       - name: Install Aztec CLI
         run: |
           export SHELL=/bin/bash
+          export CI=1
           VERSION=$(jq -r '.dependencies["@aztec/aztec.js"]' package.json)
           VERSION_NO_V=${VERSION#v}
           echo "Running version-specific installer for $VERSION_NO_V..."
