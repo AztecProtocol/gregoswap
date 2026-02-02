@@ -36,18 +36,18 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Install Aztec CLI
-        run: |
-          curl -s https://install.aztec-labs.com > tmp.sh
-          bash tmp.sh <<< yes "yes"
-
-      - name: Update path
-        run: echo "/home/runner/.aztec/bin" >> $GITHUB_PATH
-
       - name: Set Aztec version
         run: |
           VERSION=$(jq -r '.dependencies["@aztec/aztec.js"]' package.json)
           aztec-up install $VERSION
+
+      - name: Install Aztec CLI
+        run: |
+          curl -s https://install.aztec.network/4.0.0-nightly.20260126/ > tmp.sh
+          bash tmp.sh <<< yes "yes"
+
+      - name: Update path
+        run: echo "/home/runner/.aztec/bin" >> $GITHUB_PATH
 
       - name: Compile contracts
         run: yarn compile:contracts
