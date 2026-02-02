@@ -9,6 +9,7 @@ export interface NetworkConfig {
     amm: string;
     liquidityToken: string;
     pop: string;
+    sponsoredFPC: string;
     salt: string;
   };
   deployer: {

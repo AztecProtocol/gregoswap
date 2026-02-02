@@ -33,10 +33,10 @@ curl -s https://install.aztec.network | bash
 
 ### 3. Set Aztec Version
 
-The project uses Aztec version `v4.0.0-nightly.20260128`. Set it using:
+The project uses Aztec version `v4.0.0-nightly.20260202`. Set it using:
 
 ```bash
-aztec-up 4.0.0-nightly.20260128
+aztec-up 4.0.0-nightly.20260202
 ```
 
 ## Development Setup

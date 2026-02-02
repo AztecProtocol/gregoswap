@@ -30,10 +30,10 @@ export function createGregoSwapCapabilities(network: NetworkConfig): AppCapabili
   const gregoCoinPremiumAddress = AztecAddress.fromString(network.contracts.gregoCoinPremium);
   const ammAddress = AztecAddress.fromString(network.contracts.amm);
   const popAddress = AztecAddress.fromString(network.contracts.pop);
+  const sponsoredFPCAddress = AztecAddress.fromString(network.contracts.sponsoredFPC);
 
   // Specific contract addresses for registration
-  // Note: SponsoredFPC will be registered during drip onboarding
-  const contractAddresses = [ammAddress, gregoCoinAddress, gregoCoinPremiumAddress, popAddress];
+  const contractAddresses = [ammAddress, gregoCoinAddress, gregoCoinPremiumAddress, popAddress, sponsoredFPCAddress];
 
   // Simulation patterns: specific contracts and functions
   const txSimulationPatterns: ContractFunctionPattern[] = [

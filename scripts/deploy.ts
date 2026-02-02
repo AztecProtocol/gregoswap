@@ -60,7 +60,7 @@ async function setupWallet(aztecNode: AztecNode) {
   fs.rmSync(PXE_STORE_DIR, { recursive: true, force: true });
 
   const config = getPXEConfig();
-  config.dataDirectory = PXE_STORE_DIR;
+  //config.dataDirectory = PXE_STORE_DIR;
   config.proverEnabled = PROVER_ENABLED;
 
   return await TestWallet.create(aztecNode, config, {

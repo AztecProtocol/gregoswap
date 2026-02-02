@@ -47,6 +47,8 @@ export interface OnboardingState {
   needsDrip: boolean;
   dripPhase: DripPhase;
   dripError: string | null;
+  /** Whether simulation capabilities were granted in the manifest */
+  hasSimulationGrant: boolean;
 }
 
 export const initialOnboardingState: OnboardingState = {
@@ -61,6 +63,7 @@ export const initialOnboardingState: OnboardingState = {
   needsDrip: false,
   dripPhase: 'idle',
   dripError: null,
+  hasSimulationGrant: false,
 };
 
 // =============================================================================
@@ -75,6 +78,7 @@ export const onboardingActions = {
   markRegistered: () => ({ type: 'onboarding/MARK_REGISTERED' as const }),
   markSimulated: () => ({ type: 'onboarding/MARK_SIMULATED' as const }),
   markNeedsDrip: () => ({ type: 'onboarding/MARK_NEEDS_DRIP' as const }),
+  setSimulationGrant: (granted: boolean) => ({ type: 'onboarding/SET_SIMULATION_GRANT' as const, granted }),
   complete: () => ({ type: 'onboarding/COMPLETE' as const }),
   closeModal: () => ({ type: 'onboarding/CLOSE_MODAL' as const }),
   clearPendingSwap: () => ({ type: 'onboarding/CLEAR_PENDING_SWAP' as const }),
@@ -124,6 +128,9 @@ export function onboardingReducer(state: OnboardingState, action: OnboardingActi
 
     case 'onboarding/MARK_NEEDS_DRIP':
       return { ...state, needsDrip: true, pendingSwap: false };
+
+    case 'onboarding/SET_SIMULATION_GRANT':
+      return { ...state, hasSimulationGrant: action.granted };
 
     case 'onboarding/COMPLETE':
       return { ...state, status: 'completed', error: null };
@@ -184,18 +191,28 @@ export function calculateCurrentStep(status: OnboardingStatus, needsDrip: boolea
   }
 }
 
-export const ONBOARDING_STEPS: OnboardingStep[] = [
-  { label: 'Connect Wallet', description: 'Select your account from the wallet extension' },
-  { label: 'Register Contracts', description: 'Setting up contracts' },
-  { label: 'Approve Queries', description: 'Review and approve batched queries in your wallet' },
-];
+export function getOnboardingSteps(hasSimulationGrant: boolean): OnboardingStep[] {
+  return [
+    { label: 'Connect Wallet', description: 'Select your account from the wallet extension' },
+    { label: 'Register Contracts', description: 'Registering any missing contracts' },
+    hasSimulationGrant
+      ? { label: 'Fetch Balances', description: 'Fetching your token balances' }
+      : { label: 'Approve Queries', description: 'Review and approve batched queries in your wallet' },
+  ];
+}
 
-export const ONBOARDING_STEPS_WITH_DRIP: OnboardingStep[] = [
-  { label: 'Connect Wallet', description: 'Select your account from the wallet extension' },
-  { label: 'Register Contracts', description: 'Setting up contracts' },
-  { label: 'Register Faucet', description: 'Setting up the token faucet contract' },
-  { label: 'Claim Tokens', description: 'Claiming your free GregoCoin tokens' },
-];
+export function getOnboardingStepsWithDrip(hasSimulationGrant: boolean): OnboardingStep[] {
+  return [
+    { label: 'Connect Wallet', description: 'Select your account from the wallet extension' },
+    { label: 'Register Contracts', description: 'Registering any missing contracts' },
+    { label: 'Register Faucet', description: 'Registering the token faucet contract if needed' },
+    { label: 'Claim Tokens', description: 'Claiming your free GregoCoin tokens' },
+  ];
+}
+
+// Keep backwards-compatible exports for default (no grant) case
+export const ONBOARDING_STEPS: OnboardingStep[] = getOnboardingSteps(false);
+export const ONBOARDING_STEPS_WITH_DRIP: OnboardingStep[] = getOnboardingStepsWithDrip(false);
 
 // =============================================================================
 // Hook

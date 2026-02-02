@@ -8,10 +8,11 @@ import type { OnboardingStatus } from '../../contexts/onboarding';
 
 interface FlowMessagesProps {
   status: OnboardingStatus;
+  hasSimulationGrant?: boolean;
 }
 
-export function FlowMessages({ status }: FlowMessagesProps) {
-  // Show approval message during simulation
+export function FlowMessages({ status, hasSimulationGrant }: FlowMessagesProps) {
+  // Show message during simulation - different text based on whether grant was given
   if (status === 'simulating') {
     return (
       <Box
@@ -25,8 +26,9 @@ export function FlowMessages({ status }: FlowMessagesProps) {
         }}
       >
         <Typography variant="body2" color="text.secondary">
-          Please approve the batched queries in your wallet. This is a one-time setup that enables seamless interactions
-          going forward.
+          {hasSimulationGrant
+            ? 'Fetching your token balances...'
+            : 'Please approve the batched queries in your wallet. This is a one-time setup that enables seamless interactions going forward.'}
         </Typography>
       </Box>
     );

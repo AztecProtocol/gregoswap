@@ -1,7 +1,5 @@
 use super::ProofOfPassword;
-use aztec::{
-    protocol_types::address::AztecAddress, test::helpers::test_environment::TestEnvironment,
-};
+use aztec::{protocol::address::AztecAddress, test::helpers::test_environment::TestEnvironment};
 use token::Token;
 
 global PASSWORD: str<31> = "potato0000000000000000000000000";

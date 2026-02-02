@@ -47,6 +47,8 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
     dripPhase,
     dripError,
     dismissDripError,
+    setSimulationGrant,
+    hasSimulationGrant,
   } = useOnboarding();
   const { discoverWallets, initiateConnection, confirmConnection, cancelConnection, onWalletDisconnect } = useWallet();
   const { activeNetwork } = useNetwork();
@@ -172,6 +174,10 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
       // Request capabilities with full manifest (includes account selection)
       const manifest = createGregoSwapCapabilities(activeNetwork);
       const capabilitiesResponse = await wallet.requestCapabilities(manifest);
+
+      // Check if simulation capabilities were granted (affects step labels)
+      const simulationCapability = capabilitiesResponse.granted.find(cap => cap.type === 'simulation');
+      setSimulationGrant(!!simulationCapability);
 
       // Extract granted accounts from capability response
       const accountsCapability = capabilitiesResponse.granted.find(cap => cap.type === 'accounts') as
@@ -340,7 +346,7 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
             </Collapse>
 
             {/* Flow-specific Messages */}
-            <FlowMessages status={status} />
+            <FlowMessages status={status} hasSimulationGrant={hasSimulationGrant} />
 
             {/* Drip Password Input (shown when balance is 0) */}
             <Collapse in={status === 'awaiting_drip'} timeout={400}>
