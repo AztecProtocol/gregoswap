@@ -27,7 +27,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Enable Corepack
         run: corepack enable
@@ -45,7 +45,8 @@ jobs:
 
       - name: Set Aztec version
         run: |
-          aztec-up ${{ vars.VERSION }}
+          VERSION=$(jq -r '.dependencies["@aztec/aztec.js"]' package.json)
+          aztec-up install $VERSION
 
       - name: Compile contracts
         run: yarn compile:contracts
