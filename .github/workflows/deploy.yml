@@ -41,9 +41,13 @@ jobs:
           VERSION=$(jq -r '.dependencies["@aztec/aztec.js"]' package.json)
           VERSION_NO_V=${VERSION#v}
           echo "Running version-specific installer..."
+          # Set up PATH for foundryup before running installer
+          export PATH="$HOME/.foundry/bin:$PATH"
           curl -fsSL "https://install.aztec.network/$VERSION_NO_V/install" | VERSION="$VERSION_NO_V" bash
           echo "Installation completed"
           ls -la ~/.aztec/bin/
+          echo "Installed tools:"
+          ls -la ~/.aztec/versions/$VERSION_NO_V/bin/ 2>/dev/null || echo "Version bin directory not found"
 
       - name: Update path
         run: echo "/home/runner/.aztec/bin" >> $GITHUB_PATH
