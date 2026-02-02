@@ -40,21 +40,12 @@ jobs:
         run: |
           VERSION=$(jq -r '.dependencies["@aztec/aztec.js"]' package.json)
           VERSION_NO_V=${VERSION#v}
-          echo "Installing Aztec version: $VERSION_NO_V"
-          INSTALL_URL="https://install.aztec.network/$VERSION_NO_V/"
-          echo "Fetching from: $INSTALL_URL"
-          curl -L -v "$INSTALL_URL" -o tmp.sh 2>&1 | grep -E "< HTTP|< Location"
-          echo "File size: $(wc -c < tmp.sh) bytes"
-          echo "First 10 lines of downloaded file:"
-          head -10 tmp.sh
-          if [ -s tmp.sh ]; then
-            bash tmp.sh
-            echo "Install script completed"
-          else
-            echo "ERROR: Downloaded file is empty"
-            exit 1
-          fi
-          ls -la ~/.aztec/bin/ || echo "~/.aztec/bin does not exist"
+          echo "Installing Aztec toolchain for version: $VERSION_NO_V"
+          curl -sL "https://install.aztec.network/$VERSION_NO_V/" | bash
+          echo "Running aztec-up to install tools..."
+          ~/.aztec/bin/aztec-up install $VERSION_NO_V
+          echo "Installation completed"
+          ls -la ~/.aztec/bin/
 
       - name: Update path
         run: echo "/home/runner/.aztec/bin" >> $GITHUB_PATH
