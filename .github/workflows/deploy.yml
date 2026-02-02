@@ -70,11 +70,7 @@ jobs:
       - name: Deploy to Vercel
         id: deploy
         run: |
-          if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            DEPLOY_URL=$(vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes)
-          else
-            DEPLOY_URL=$(vercel deploy --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes)
-          fi
+          DEPLOY_URL=$(vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes)
           echo "url=$DEPLOY_URL" >> $GITHUB_OUTPUT
 
       - name: Comment deployment URL on PR
