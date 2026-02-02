@@ -42,6 +42,7 @@ jobs:
           VERSION_NO_V=${VERSION#v}
           curl -s https://install.aztec.network/$VERSION_NO_V/ > tmp.sh
           bash tmp.sh <<< yes "yes"
+          export PATH="/home/runner/.aztec/bin:$PATH"
           aztec-up install $VERSION_NO_V
 
       - name: Update path
