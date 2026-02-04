@@ -16,7 +16,7 @@ import type { TokenContract } from '@aztec/noir-contracts.js/Token';
 import type { AMMContract } from '@aztec/noir-contracts.js/AMM';
 import type { ProofOfPasswordContract } from '../../contracts/target/ProofOfPassword';
 import { BigDecimal } from '../utils/bigDecimal';
-import type { NetworkConfig } from '../types';
+import type { NetworkConfig } from '../config/networks';
 import type { OnboardingResult } from '../contexts/onboarding/reducer';
 
 /**
@@ -49,6 +49,7 @@ async function getSponsoredFPCData() {
 /**
  * Registers contracts needed for the swap flow
  * Returns the contract instances after registration
+ * Skips registration for contracts that are already registered
  */
 export async function registerSwapContracts(
   wallet: Wallet,
@@ -66,33 +67,58 @@ export async function registerSwapContracts(
   const { TokenContract, TokenContractArtifact } = await import('@aztec/noir-contracts.js/Token');
   const { AMMContract, AMMContractArtifact } = await import('@aztec/noir-contracts.js/AMM');
 
-  // Reconstruct contract instances using the actual salt from deployment
+  // Check which contracts are already registered
+  const [ammMetadata, gregoCoinMetadata, gregoCoinPremiumMetadata] = await wallet.batch([
+    { name: 'getContractMetadata', args: [ammAddress] },
+    { name: 'getContractMetadata', args: [gregoCoinAddress] },
+    { name: 'getContractMetadata', args: [gregoCoinPremiumAddress] },
+  ]);
+
+  // Reconstruct contract instances for unregistered contracts
   const [ammInstance, gregoCoinInstance, gregoCoinPremiumInstance] = await Promise.all([
-    getContractInstanceFromInstantiationParams(AMMContractArtifact, {
-      salt: contractSalt,
-      deployer: deployerAddress,
-      constructorArgs: [gregoCoinAddress, gregoCoinPremiumAddress, liquidityTokenAddress],
-    }),
-    getContractInstanceFromInstantiationParams(TokenContractArtifact, {
-      salt: contractSalt,
-      deployer: deployerAddress,
-      constructorArgs: [deployerAddress, 'GregoCoin', 'GRG', 18],
-    }),
-    getContractInstanceFromInstantiationParams(TokenContractArtifact, {
-      salt: contractSalt,
-      deployer: deployerAddress,
-      constructorArgs: [deployerAddress, 'GregoCoinPremium', 'GRGP', 18],
-    }),
+    !ammMetadata.result.instance
+      ? getContractInstanceFromInstantiationParams(AMMContractArtifact, {
+          salt: contractSalt,
+          deployer: deployerAddress,
+          constructorArgs: [gregoCoinAddress, gregoCoinPremiumAddress, liquidityTokenAddress],
+        })
+      : null,
+    !gregoCoinMetadata.result.instance
+      ? getContractInstanceFromInstantiationParams(TokenContractArtifact, {
+          salt: contractSalt,
+          deployer: deployerAddress,
+          constructorArgs: [deployerAddress, 'GregoCoin', 'GRG', 18],
+        })
+      : null,
+    !gregoCoinPremiumMetadata.result.instance
+      ? getContractInstanceFromInstantiationParams(TokenContractArtifact, {
+          salt: contractSalt,
+          deployer: deployerAddress,
+          constructorArgs: [deployerAddress, 'GregoCoinPremium', 'GRGP', 18],
+        })
+      : null,
   ]);
 
-  // Register contracts in batch
-  await wallet.batch([
-    { name: 'registerContract', args: [ammInstance, AMMContractArtifact, undefined] },
-    { name: 'registerContract', args: [gregoCoinInstance, TokenContractArtifact, undefined] },
-    { name: 'registerContract', args: [gregoCoinPremiumInstance, undefined, undefined] },
-  ]);
+  // Build registration batch for unregistered contracts only
+  const registrationBatch: { name: 'registerContract'; args: [any, any, any] }[] = [];
 
-  // After registration, instantiate the contracts
+  if (ammInstance) {
+    registrationBatch.push({ name: 'registerContract', args: [ammInstance, AMMContractArtifact, undefined] });
+  }
+  if (gregoCoinInstance) {
+    registrationBatch.push({ name: 'registerContract', args: [gregoCoinInstance, TokenContractArtifact, undefined] });
+  }
+  if (gregoCoinPremiumInstance) {
+    // gregoCoinPremium shares the same artifact as gregoCoin, so we can omit it
+    registrationBatch.push({ name: 'registerContract', args: [gregoCoinPremiumInstance, undefined, undefined] });
+  }
+
+  // Only call batch if there are contracts to register
+  if (registrationBatch.length > 0) {
+    await wallet.batch(registrationBatch);
+  }
+
+  // Instantiate the contracts
   const gregoCoin = TokenContract.at(gregoCoinAddress, wallet);
   const gregoCoinPremium = TokenContract.at(gregoCoinPremiumAddress, wallet);
   const amm = AMMContract.at(ammAddress, wallet);
@@ -103,6 +129,7 @@ export async function registerSwapContracts(
 /**
  * Registers contracts needed for the drip flow
  * Returns the contract instances after registration
+ * Skips registration for contracts that are already registered
  */
 export async function registerDripContracts(
   wallet: Wallet,
@@ -115,15 +142,34 @@ export async function registerDripContracts(
     '../../contracts/target/ProofOfPassword'
   );
 
-  const instance = await node.getContract(popAddress);
   const { instance: sponsoredFPCInstance, artifact: SponsoredFPCContractArtifact } = await getSponsoredFPCData();
 
-  await wallet.batch([
-    { name: 'registerContract', args: [instance, ProofOfPasswordContractArtifact, undefined] },
-    { name: 'registerContract', args: [sponsoredFPCInstance, SponsoredFPCContractArtifact, undefined] },
+  // Check which contracts are already registered
+  const [popMetadata, sponsoredFPCMetadata] = await wallet.batch([
+    { name: 'getContractMetadata', args: [popAddress] },
+    { name: 'getContractMetadata', args: [sponsoredFPCInstance.address] },
   ]);
 
-  // After registration, instantiate the ProofOfPassword contract
+  // Build registration batch for unregistered contracts only
+  const registrationBatch: { name: 'registerContract'; args: [any, any, any] }[] = [];
+
+  if (!popMetadata.result.instance) {
+    const instance = await node.getContract(popAddress);
+    registrationBatch.push({ name: 'registerContract', args: [instance, ProofOfPasswordContractArtifact, undefined] });
+  }
+  if (!sponsoredFPCMetadata.result.instance) {
+    registrationBatch.push({
+      name: 'registerContract',
+      args: [sponsoredFPCInstance, SponsoredFPCContractArtifact, undefined],
+    });
+  }
+
+  // Only call batch if there are contracts to register
+  if (registrationBatch.length > 0) {
+    await wallet.batch(registrationBatch);
+  }
+
+  // Instantiate the ProofOfPassword contract
   const pop = ProofOfPasswordContract.at(popAddress, wallet);
 
   return { pop };

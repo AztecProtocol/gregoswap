@@ -8,7 +8,7 @@ pub contract ProofOfPassword {
     use aztec::{
         macros::{functions::{external, initializer, only_self}, storage::storage},
         oracle::notes::set_sender_for_tags,
-        protocol_types::{address::AztecAddress, hash::poseidon2_hash, traits::{Serialize, ToField}},
+        protocol::{address::AztecAddress, hash::poseidon2_hash, traits::{Serialize, ToField}},
         state_vars::PublicImmutable,
     };
     use compressed_string::FieldCompressedString;

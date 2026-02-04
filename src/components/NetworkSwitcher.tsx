@@ -107,7 +107,7 @@ export function NetworkSwitcher() {
                     backgroundColor: network.id === activeNetwork.id ? 'primary.main' : 'text.disabled',
                   }}
                 />
-                <Typography variant="body2">{network.name}</Typography>
+                <Typography variant="body2">{network.id}</Typography>
               </Box>
             </MenuItem>
           ))}
@@ -136,7 +136,7 @@ export function NetworkSwitcher() {
           {pendingNetwork && (
             <Box sx={{ mt: 2, p: 2, backgroundColor: 'rgba(212, 255, 40, 0.05)', borderRadius: 1 }}>
               <Typography variant="body2" fontWeight={600}>
-                {activeNetwork.name} → {availableNetworks.find(n => n.id === pendingNetwork)?.name}
+                {activeNetwork.id} → {availableNetworks.find(n => n.id === pendingNetwork)?.id}
               </Typography>
             </Box>
           )}

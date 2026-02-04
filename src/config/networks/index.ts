@@ -1,6 +1,5 @@
 export interface NetworkConfig {
   id: string;
-  name: string;
   nodeUrl: string;
   chainId: string;
   rollupVersion: string;
@@ -10,6 +9,7 @@ export interface NetworkConfig {
     amm: string;
     liquidityToken: string;
     pop: string;
+    sponsoredFPC: string;
     salt: string;
   };
   deployer: {

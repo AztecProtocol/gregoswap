@@ -11,6 +11,8 @@ import { useContracts } from '../contracts';
 import {
   useOnboardingReducer,
   calculateCurrentStep,
+  getOnboardingSteps,
+  getOnboardingStepsWithDrip,
   ONBOARDING_STEPS,
   ONBOARDING_STEPS_WITH_DRIP,
   type OnboardingStatus,
@@ -21,7 +23,7 @@ import {
 import { parseDripError } from '../../services/contractService';
 
 export type { OnboardingStatus, OnboardingStep };
-export { ONBOARDING_STEPS, ONBOARDING_STEPS_WITH_DRIP };
+export { ONBOARDING_STEPS, ONBOARDING_STEPS_WITH_DRIP, getOnboardingSteps, getOnboardingStepsWithDrip };
 
 interface OnboardingContextType {
   // State
@@ -42,6 +44,7 @@ interface OnboardingContextType {
   // Tracking state
   hasRegisteredBase: boolean;
   hasSimulated: boolean;
+  hasSimulationGrant: boolean;
 
   // Drip execution state
   dripPhase: DripPhase;
@@ -54,6 +57,7 @@ interface OnboardingContextType {
   setOnboardingResult: (result: OnboardingResult) => void;
   markRegistered: () => void;
   markSimulated: () => void;
+  setSimulationGrant: (granted: boolean) => void;
   closeModal: () => void;
   clearSwapPending: () => void;
   completeDripOnboarding: (password: string) => void;
@@ -97,7 +101,9 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
   const dripTriggeredRef = useRef(false);
 
   // Computed values
-  const steps = state.needsDrip ? ONBOARDING_STEPS_WITH_DRIP : ONBOARDING_STEPS;
+  const steps = state.needsDrip
+    ? getOnboardingStepsWithDrip(state.hasSimulationGrant)
+    : getOnboardingSteps(state.hasSimulationGrant);
   const currentStep = calculateCurrentStep(state.status, state.needsDrip);
   const totalSteps = state.needsDrip ? 5 : 4;
   const isSwapPending = state.status === 'completed' && state.pendingSwap;
@@ -174,7 +180,7 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
   // Drip execution effect - triggers when password is provided during onboarding
   useEffect(() => {
     async function handleDrip() {
-      if (!isDripPending || !state.dripPassword || isDripping || dripTriggeredRef.current || !currentAddress) {
+      if (!isDripPending || !state.dripPassword || isDripping || state.dripPhase === 'error' || dripTriggeredRef.current || !currentAddress) {
         return;
       }
 
@@ -216,6 +222,7 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     dripPassword: state.dripPassword,
     hasRegisteredBase: state.hasRegisteredBase,
     hasSimulated: state.hasSimulated,
+    hasSimulationGrant: state.hasSimulationGrant,
     dripPhase: state.dripPhase,
     dripError: state.dripError,
     isDripping,
@@ -224,6 +231,7 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     setOnboardingResult: actions.setResult,
     markRegistered: actions.markRegistered,
     markSimulated: actions.markSimulated,
+    setSimulationGrant: actions.setSimulationGrant,
     closeModal: actions.closeModal,
     clearSwapPending: actions.clearPendingSwap,
     completeDripOnboarding: actions.setPassword,

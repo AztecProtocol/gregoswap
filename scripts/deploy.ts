@@ -12,23 +12,23 @@ import { AztecAddress } from '@aztec/stdlib/aztec-address';
 import { createAztecNodeClient, type AztecNode } from '@aztec/aztec.js/node';
 import { getContractInstanceFromInstantiationParams } from '@aztec/stdlib/contract';
 import { Fr } from '@aztec/foundation/curves/bn254';
-import type { DeployAccountOptions } from '@aztec/aztec.js/wallet';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 
 import { ProofOfPasswordContract } from '../contracts/target/ProofOfPassword.ts';
 import { createLogger } from '@aztec/foundation/log';
+import { BatchCall } from '@aztec/aztec.js/contracts';
 
 // Parse network from CLI args (--network <name>)
 function getNetworkFromArgs(): string {
   const args = process.argv.slice(2);
   const networkIndex = args.indexOf('--network');
   if (networkIndex === -1 || networkIndex === args.length - 1) {
-    console.error('Usage: node deploy.ts --network <local|devnet>');
+    console.error('Usage: node deploy.ts --network <local|devnet|nextnet>');
     process.exit(1);
   }
   const network = args[networkIndex + 1];
-  if (!['local', 'devnet'].includes(network)) {
-    console.error(`Invalid network: ${network}. Must be 'local' or 'devnet'`);
+  if (!['local', 'devnet', 'nextnet'].includes(network)) {
+    console.error(`Invalid network: ${network}. Must be 'local', 'devnet' or 'nextnet'`);
     process.exit(1);
   }
   return network;
@@ -40,6 +40,7 @@ const NETWORK = getNetworkFromArgs();
 const NETWORK_URLS: Record<string, string> = {
   local: 'http://localhost:8080',
   devnet: 'https://next.devnet.aztec-labs.com',
+  nextnet: 'https://nextnet.aztec-labs.com',
 };
 
 const AZTEC_NODE_URL = NETWORK_URLS[NETWORK];
@@ -59,7 +60,7 @@ async function setupWallet(aztecNode: AztecNode) {
   fs.rmSync(PXE_STORE_DIR, { recursive: true, force: true });
 
   const config = getPXEConfig();
-  config.dataDirectory = PXE_STORE_DIR;
+  //config.dataDirectory = PXE_STORE_DIR;
   config.proverEnabled = PROVER_ENABLED;
 
   return await TestWallet.create(aztecNode, config, {
@@ -138,16 +139,11 @@ async function deployContracts(wallet: TestWallet, deployer: AztecAddress) {
     liquidityToken.address,
   ).send({ from: deployer, fee: { paymentMethod }, contractAddressSalt, wait: { timeout: 120 } });
 
-  await liquidityToken.methods
-    .set_minter(amm.address, true)
-    .send({ from: deployer, fee: { paymentMethod }, wait: { timeout: 120 } });
-
-  await gregoCoin.methods
-    .mint_to_private(deployer, INITIAL_TOKEN_BALANCE)
-    .send({ from: deployer, fee: { paymentMethod }, wait: { timeout: 120 } });
-  await gregoCoinPremium.methods
-    .mint_to_private(deployer, INITIAL_TOKEN_BALANCE)
-    .send({ from: deployer, fee: { paymentMethod }, wait: { timeout: 120 } });
+  await new BatchCall(wallet, [
+    liquidityToken.methods.set_minter(amm.address, true),
+    gregoCoin.methods.mint_to_private(deployer, INITIAL_TOKEN_BALANCE),
+    gregoCoinPremium.methods.mint_to_private(deployer, INITIAL_TOKEN_BALANCE),
+  ]).send({ from: deployer, fee: { paymentMethod }, wait: { timeout: 120 } });
 
   const nonceForAuthwits = Fr.random();
   const token0Authwit = await wallet.createAuthWit(deployer, {
@@ -169,27 +165,36 @@ async function deployContracts(wallet: TestWallet, deployer: AztecAddress) {
     ),
   });
 
-  const addLiquidityInteraction = amm.methods
-    .add_liquidity(
-      INITIAL_TOKEN_BALANCE,
-      INITIAL_TOKEN_BALANCE,
-      INITIAL_TOKEN_BALANCE,
-      INITIAL_TOKEN_BALANCE,
-      nonceForAuthwits,
-    )
-    .with({ authWitnesses: [token0Authwit, token1Authwit] });
-  await addLiquidityInteraction.send({ from: deployer, fee: { paymentMethod }, wait: { timeout: 120 } });
+  await new BatchCall(wallet, [
+    liquidityToken.methods.set_minter(amm.address, true),
+    gregoCoin.methods.mint_to_private(deployer, INITIAL_TOKEN_BALANCE),
+    gregoCoinPremium.methods.mint_to_private(deployer, INITIAL_TOKEN_BALANCE),
+    amm.methods
+      .add_liquidity(
+        INITIAL_TOKEN_BALANCE,
+        INITIAL_TOKEN_BALANCE,
+        INITIAL_TOKEN_BALANCE,
+        INITIAL_TOKEN_BALANCE,
+        nonceForAuthwits,
+      )
+      .with({ authWitnesses: [token0Authwit, token1Authwit] }),
+  ]).send({ from: deployer, fee: { paymentMethod }, wait: { timeout: 120 } });
 
-  const pop = await ProofOfPasswordContract.deploy(wallet, gregoCoin.address, PASSWORD).send({
+  const popDeployMethod = ProofOfPasswordContract.deploy(wallet, gregoCoin.address, PASSWORD);
+
+  // Address is computed lazily. This is bad
+  await popDeployMethod.getInstance();
+
+  const pop = ProofOfPasswordContract.at(popDeployMethod.address, wallet);
+
+  await new BatchCall(wallet, [
+    await popDeployMethod.request({ contractAddressSalt, deployer }),
+    gregoCoin.methods.set_minter(pop.address, true),
+  ]).send({
     from: deployer,
-    contractAddressSalt,
     fee: { paymentMethod },
     wait: { timeout: 120 },
   });
-
-  await gregoCoin.methods
-    .set_minter(pop.address, true)
-    .send({ from: deployer, fee: { paymentMethod }, wait: { timeout: 120 } });
 
   return {
     gregoCoinAddress: gregoCoin.address.toString(),
@@ -209,7 +214,6 @@ async function writeNetworkConfig(network: string, deploymentInfo: any) {
   const configPath = path.join(configDir, `${network}.json`);
   const config = {
     id: network,
-    name: network === 'local' ? 'Local Node' : 'Devnet',
     nodeUrl: AZTEC_NODE_URL,
     chainId: deploymentInfo.chainId,
     rollupVersion: deploymentInfo.rollupVersion,
@@ -273,6 +277,7 @@ async function createAccountAndDeployContract() {
 
   // Clean up the PXE store
   fs.rmSync(PXE_STORE_DIR, { recursive: true, force: true });
+  process.exit(0);
 }
 
 createAccountAndDeployContract().catch(error => {

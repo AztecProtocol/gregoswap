@@ -14,7 +14,7 @@ import {
   type DiscoverySession,
 } from '@aztec/wallet-sdk/manager';
 import { EmbeddedWallet } from '../embedded_wallet';
-import type { NetworkConfig } from '../types';
+import type { NetworkConfig } from '../config/networks';
 
 const APP_ID = 'gregoswap';
 
