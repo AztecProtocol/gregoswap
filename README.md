@@ -28,15 +28,15 @@ yarn install
 ### 2. Install Aztec CLI
 
 ```bash
-curl -s https://install.aztec.network | bash
+VERSION=4.0.0-nightly.20260205 bash -i <(curl -sL https://install.aztec.network/4.0.0-nightly.20260205/)
 ```
 
 ### 3. Set Aztec Version
 
-The project uses Aztec version `v4.0.0-nightly.20260204`. Set it using:
+The project uses Aztec version `v4.0.0-nightly.20260205`. Set it using:
 
 ```bash
-aztec-up 4.0.0-nightly.20260204
+aztec-up install 4.0.0-nightly.20260205
 ```
 
 ## Development Setup

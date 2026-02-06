@@ -2,18 +2,18 @@
   "id": "nextnet",
   "nodeUrl": "https://nextnet.aztec-labs.com",
   "chainId": "11155111",
-  "rollupVersion": "1478105884",
+  "rollupVersion": "3863723750",
   "contracts": {
-    "gregoCoin": "0x18aa57cc9572b773c5320c36c57cdaeeda80dfc68a991cd4bcae0b0e2677425f",
-    "gregoCoinPremium": "0x171a5c43859214285f1854abc66a41d9aa2e1a7fe6d7246f3d8958e94a7b546d",
-    "amm": "0x1c17ce4c09b37df1915147be6b38dfe687a2ed46a713e5aeabab6c1e4620a716",
-    "liquidityToken": "0x2819b01eff2126a842f9c53c6bff272e8f697d022910339949ed91acec05b4f8",
-    "pop": "0x08d67d4e455dea167397c74269cca57b1c985ba1c5b09c7537ee7cbab928a8c4",
-    "sponsoredFPC": "0x1436304c596d869af61c533679f888dc3f3355e3dc4cdb0418ed6673e1f3de4e",
-    "salt": "0x113b8aece3e1b6a706fa1897314663fcfcbe7e2e5b64b59f69960aa7b10453e4"
+    "gregoCoin": "0x25b20a340f009dc775ede3af0ebedbce8660cc40ac9b3adf22aa51cfa0eb0d53",
+    "gregoCoinPremium": "0x2195a578fa843e582cb6e4c04ece35ce9eae2cbc28b27dc982b3358d5cfe38bb",
+    "amm": "0x1994d1b81338743a75977caaa5ddd778414e5d9a0523865232bcd0128660fa97",
+    "liquidityToken": "0x19b16cf1adbb416a57c19b5e2beda77e550a70c292c2a3ab629cfcdb4b7c5517",
+    "pop": "0x1f45d6c7ddb5c244d33d9c2e7e248fdabc6017382adc4fcb354f0b85f5e1a548",
+    "sponsoredFPC": "0x144de396522291dd55b16bd078f14091e6373bbf82a6ea496bda84ad6b4860e7",
+    "salt": "0x2db346e4f79c077a8c768b7619f64b11a6a905a86677c1c91b1825393e6922aa"
   },
   "deployer": {
-    "address": "0x005222ea1cd1a5fd66f531e2082cd35a43d7b7f4b5f6f1f7e81b26669f70795b"
+    "address": "0x21f33ec0798624d3a36eb0c886e7b3f432b79d6cf009b1739a365c18fbffa80d"
   },
-  "deployedAt": "2026-02-04T09:33:27.162Z"
+  "deployedAt": "2026-02-05T09:06:27.528Z"
 }

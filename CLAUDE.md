@@ -477,7 +477,7 @@ Used for exchange rate calculations with 18 decimal precision.
 
 ## Version Information
 
-- **Aztec SDK:** v4.0.0-nightly.20260204
+- **Aztec SDK:** v4.0.0-nightly.20260205
 - **React:** 18.3.1
 - **Vite:** 7.1.4
 - **Node.js:** v22+
