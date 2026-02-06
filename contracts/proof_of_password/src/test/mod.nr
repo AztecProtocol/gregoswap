@@ -64,7 +64,7 @@ unconstrained fn fails_on_incorrect_password() {
     );
 }
 
-#[test(should_fail_with = "Contract execution has reverted: Attempted to emit duplicate siloed nullifier")]
+#[test(should_fail_with = "Attempted to emit duplicate siloed nullifier")]
 unconstrained fn fails_on_double_dip() {
     let (env, pop_contract_address, _, recipient) = setup();
 
