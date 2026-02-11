@@ -39,7 +39,7 @@ const NETWORK = getNetworkFromArgs();
 // Network-specific node URLs (hardcoded, not configurable)
 const NETWORK_URLS: Record<string, string> = {
   local: 'http://localhost:8080',
-  devnet: 'https://next.devnet.aztec-labs.com',
+  devnet: 'https://v4-devnet-1.aztec-labs.com',
   nextnet: 'https://nextnet.aztec-labs.com',
 };
 

@@ -4,7 +4,7 @@
  * Update gregoswap to the latest Aztec nightly version.
  *
  * Usage:
- *   node scripts/update-to-nightly.js [--version VERSION] [--deploy] [--skip-aztec-up]
+ *   node scripts/update-to-nightly.js [--version VERSION] [--deploy [NETWORK]] [--skip-aztec-up]
  */
 
 import { readFileSync, writeFileSync } from "fs";
@@ -133,15 +133,17 @@ function compileContracts() {
   log(COLORS.green, "✓ Contracts compiled\n");
 }
 
-function deployToNextnet() {
-  log(COLORS.yellow, "[7/7] Deploying to nextnet...");
+const VALID_NETWORKS = ["local", "devnet", "nextnet"];
+
+function deploy(network) {
+  log(COLORS.yellow, `[7/7] Deploying to ${network}...`);
   if (!process.env.PASSWORD) {
     log(COLORS.red, "ERROR: PASSWORD environment variable not set");
     log(COLORS.red, "Please set PASSWORD before running with --deploy flag");
     process.exit(1);
   }
-  exec("yarn deploy:nextnet");
-  log(COLORS.green, "✓ Deployed to nextnet\n");
+  exec(`yarn deploy:${network}`);
+  log(COLORS.green, `✓ Deployed to ${network}\n`);
 }
 
 async function main() {
@@ -150,7 +152,7 @@ async function main() {
   // Parse arguments
   const args = process.argv.slice(2);
   let version = null;
-  let deploy = false;
+  let deployNetwork = null;
   let skipAztecUp = false;
 
   for (let i = 0; i < args.length; i++) {
@@ -158,14 +160,24 @@ async function main() {
       version = args[i + 1].replace(/^v/, "");
       i++;
     } else if (args[i] === "--deploy") {
-      deploy = true;
+      const next = args[i + 1];
+      if (next && !next.startsWith("--")) {
+        if (!VALID_NETWORKS.includes(next)) {
+          log(COLORS.red, `ERROR: Unknown network "${next}". Valid networks: ${VALID_NETWORKS.join(", ")}`);
+          process.exit(1);
+        }
+        deployNetwork = next;
+        i++;
+      } else {
+        deployNetwork = "nextnet";
+      }
     } else if (args[i] === "--skip-aztec-up") {
       skipAztecUp = true;
     } else if (args[i] === "--help") {
       console.log("Usage: node scripts/update-to-nightly.js [OPTIONS]");
       console.log("\nOptions:");
       console.log("  --version VERSION    Specify nightly version (e.g., 4.0.0-nightly.20260206)");
-      console.log("  --deploy             Deploy to nextnet after update");
+      console.log("  --deploy [NETWORK]   Deploy after update (default: nextnet, options: local, devnet, nextnet)");
       console.log("  --skip-aztec-up      Skip Aztec CLI installation");
       console.log("  --help               Show this help message");
       process.exit(0);
@@ -194,16 +206,16 @@ async function main() {
 
   compileContracts();
 
-  if (deploy) {
-    deployToNextnet();
+  if (deployNetwork) {
+    deploy(deployNetwork);
   } else {
-    log(COLORS.yellow, "[7/7] Skipping deployment (use --deploy flag to deploy)\n");
+    log(COLORS.yellow, "[7/7] Skipping deployment (use --deploy [network] flag to deploy)\n");
   }
 
   log(COLORS.green, "=== Update Complete ===");
   log(COLORS.green, `Version: v${version}`);
-  if (!deploy) {
-    log(COLORS.yellow, "To deploy to nextnet, run: PASSWORD=<password> node scripts/update-to-nightly.js --deploy");
+  if (!deployNetwork) {
+    log(COLORS.yellow, "To deploy, run: PASSWORD=<password> node scripts/update-to-nightly.js --deploy [local|devnet|nextnet]");
   }
 }
 
