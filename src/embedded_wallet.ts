@@ -5,15 +5,21 @@ import { getPXEConfig, type PXEConfig } from '@aztec/pxe/config';
 import { createPXE, PXE } from '@aztec/pxe/client/lazy';
 import { AztecAddress } from '@aztec/stdlib/aztec-address';
 import { getContractInstanceFromInstantiationParams } from '@aztec/stdlib/contract';
-import { mergeExecutionPayloads, type ExecutionPayload, type TxSimulationResult } from '@aztec/stdlib/tx';
+import { BlockHeader, mergeExecutionPayloads, type ExecutionPayload, type TxSimulationResult } from '@aztec/stdlib/tx';
 import type { DefaultAccountEntrypointOptions } from '@aztec/entrypoints/account';
 import { deriveSigningKey } from '@aztec/stdlib/keys';
 import { SignerlessAccount, type Account, type AccountContract } from '@aztec/aztec.js/account';
-import { AccountManager } from '@aztec/aztec.js/wallet';
+import { AccountManager, type SimulateOptions } from '@aztec/aztec.js/wallet';
 import type { AztecNode } from '@aztec/aztec.js/node';
 import type { SimulateInteractionOptions } from '@aztec/aztec.js/contracts';
 import { Fr, GrumpkinScalar } from '@aztec/aztec.js/fields';
-import { BaseWallet } from '@aztec/wallet-sdk/base-wallet';
+import {
+  BaseWallet,
+  buildMergedSimulationResult,
+  extractOptimizablePublicStaticCalls,
+  simulateViaNode,
+  type FeeOptions,
+} from '@aztec/wallet-sdk/base-wallet';
 
 /**
  * Data for generating an account.
@@ -120,13 +126,58 @@ export class EmbeddedWallet extends BaseWallet {
     };
   }
 
-  override async simulateTx(
-    executionPayload: ExecutionPayload,
-    opts: SimulateInteractionOptions,
-  ): Promise<TxSimulationResult> {
+  override async simulateTx(executionPayload: ExecutionPayload, opts: SimulateOptions): Promise<TxSimulationResult> {
     const feeOptions = opts.fee?.estimateGas
-      ? await this.completeFeeOptionsForEstimation(opts.from, executionPayload.feePayer, opts.fee.gasSettings)
-      : await this.completeFeeOptions(opts.from, executionPayload.feePayer, opts.fee.gasSettings);
+      ? await this.completeFeeOptionsForEstimation(opts.from, executionPayload.feePayer, opts.fee?.gasSettings)
+      : await this.completeFeeOptions(opts.from, executionPayload.feePayer, opts.fee?.gasSettings);
+    const { optimizableCalls, remainingCalls } = extractOptimizablePublicStaticCalls(executionPayload);
+    const remainingPayload = { ...executionPayload, calls: remainingCalls };
+
+    const chainInfo = await this.getChainInfo();
+    let blockHeader: BlockHeader;
+    // PXE might not be synced yet, so we pull the latest header from the node
+    // To keep things consistent, we'll always try with PXE first
+    try {
+      blockHeader = await this.pxe.getSyncedBlockHeader();
+    } catch {
+      blockHeader = (await this.aztecNode.getBlockHeader())!;
+    }
+
+    const [optimizedResults, normalResult] = await Promise.all([
+      optimizableCalls.length > 0
+        ? simulateViaNode(
+            this.aztecNode,
+            optimizableCalls,
+            opts.from,
+            chainInfo,
+            feeOptions.gasSettings,
+            blockHeader,
+            opts.skipFeeEnforcement ?? true,
+          )
+        : Promise.resolve([]),
+      remainingCalls.length > 0
+        ? this.simulateViaEntrypoint(
+            remainingPayload,
+            opts.from,
+            feeOptions,
+            opts.skipTxValidation,
+            opts.skipFeeEnforcement ?? true,
+          )
+        : Promise.resolve(null),
+    ]);
+
+    return buildMergedSimulationResult(optimizedResults, normalResult);
+  }
+
+  protected override async simulateViaEntrypoint(
+    executionPayload: ExecutionPayload,
+    from: AztecAddress,
+    feeOptions: FeeOptions,
+    _skipTxValidation?: boolean,
+    _skipFeeEnforcement?: boolean,
+  ): Promise<TxSimulationResult> {
+    const { account: fromAccount, instance, artifact } = await this.getFakeAccountDataFor(from);
+
     const feeExecutionPayload = await feeOptions.walletFeePaymentMethod?.getExecutionPayload();
     const executionOptions: DefaultAccountEntrypointOptions = {
       txNonce: Fr.random(),
@@ -136,7 +187,6 @@ export class EmbeddedWallet extends BaseWallet {
     const finalExecutionPayload = feeExecutionPayload
       ? mergeExecutionPayloads([feeExecutionPayload, executionPayload])
       : executionPayload;
-    const { account: fromAccount, instance, artifact } = await this.getFakeAccountDataFor(opts.from);
     const chainInfo = await this.getChainInfo();
     const txRequest = await fromAccount.createTxExecutionRequest(
       finalExecutionPayload,
@@ -144,11 +194,8 @@ export class EmbeddedWallet extends BaseWallet {
       chainInfo,
       executionOptions,
     );
-    const contractOverrides = {
-      [opts.from.toString()]: { instance, artifact },
-    };
-    return this.pxe.simulateTx(txRequest, true /* simulatePublic */, true, true, {
-      contracts: contractOverrides,
+    return this.pxe.simulateTx(txRequest, true, true, true, {
+      contracts: { [from.toString()]: { instance, artifact } },
     });
   }
 }
