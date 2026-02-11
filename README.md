@@ -45,9 +45,10 @@ aztec-up install 4.0.0-nightly.20260205
 node scripts/update-to-nightly.js                                        # auto-detect latest
 node scripts/update-to-nightly.js --version 4.0.0-nightly.20260206       # specific version
 PASSWORD=<pw> node scripts/update-to-nightly.js --deploy                  # update + deploy to nextnet
+PASSWORD=<pw> node scripts/update-to-nightly.js --deploy devnet           # update + deploy to devnet
 ```
 
-Use `--skip-aztec-up` to skip Aztec CLI installation. In CI (`CI=1`), the script installs Aztec via curl instead of aztec-up.
+Use `--deploy [local|devnet|nextnet]` to deploy after update (default: `nextnet`). Use `--skip-aztec-up` to skip Aztec CLI installation. In CI (`CI=1`), the script installs Aztec via curl instead of aztec-up.
 
 ## Development Setup
 
