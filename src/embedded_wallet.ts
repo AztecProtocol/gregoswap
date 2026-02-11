@@ -78,8 +78,7 @@ export class EmbeddedWallet extends BaseWallet {
   protected async getAccountFromAddress(address: AztecAddress): Promise<Account> {
     let account: Account | undefined;
     if (address.equals(AztecAddress.ZERO)) {
-      const chainInfo = await this.getChainInfo();
-      account = new SignerlessAccount(chainInfo);
+      account = new SignerlessAccount();
     } else if (this.accounts.has(address.toString())) {
       account = this.accounts.get(address.toString());
     } else {
@@ -103,14 +102,13 @@ export class EmbeddedWallet extends BaseWallet {
   }
 
   private async getFakeAccountDataFor(address: AztecAddress) {
-    const chainInfo = await this.getChainInfo();
     const originalAccount = await this.getAccountFromAddress(address);
     const originalAddress = await originalAccount.getCompleteAddress();
-    const { contractInstance } = await this.pxe.getContractMetadata(originalAddress.address);
+    const contractInstance = await this.pxe.getContractInstance(originalAddress.address);
     if (!contractInstance) {
       throw new Error(`No contract instance found for address: ${originalAddress.address}`);
     }
-    const stubAccount = createStubAccount(originalAddress, chainInfo);
+    const stubAccount = createStubAccount(originalAddress);
     const StubAccountContractArtifact = await getStubAccountContractArtifact();
     const instance = await getContractInstanceFromInstantiationParams(StubAccountContractArtifact, {
       salt: Fr.random(),
@@ -139,9 +137,11 @@ export class EmbeddedWallet extends BaseWallet {
       ? mergeExecutionPayloads([feeExecutionPayload, executionPayload])
       : executionPayload;
     const { account: fromAccount, instance, artifact } = await this.getFakeAccountDataFor(opts.from);
+    const chainInfo = await this.getChainInfo();
     const txRequest = await fromAccount.createTxExecutionRequest(
       finalExecutionPayload,
       feeOptions.gasSettings,
+      chainInfo,
       executionOptions,
     );
     const contractOverrides = {

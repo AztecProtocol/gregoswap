@@ -28,16 +28,26 @@ yarn install
 ### 2. Install Aztec CLI
 
 ```bash
-curl -s https://install.aztec.network | bash
+VERSION=4.0.0-nightly.20260205 bash -i <(curl -sL https://install.aztec.network/4.0.0-nightly.20260205/)
 ```
 
 ### 3. Set Aztec Version
 
-The project uses Aztec version `v3.0.0-devnet.6-patch.1`. Set it using:
+The project uses Aztec version `v4.0.0-devnet.1-patch.0`. Set it using:
 
 ```bash
-aztec-up 3.0.0-devnet.6-patch.1
+aztec-up install 4.0.0-nightly.20260205
 ```
+
+## Updating to Latest Nightly
+
+```bash
+node scripts/update-to-nightly.js                                        # auto-detect latest
+node scripts/update-to-nightly.js --version 4.0.0-nightly.20260206       # specific version
+PASSWORD=<pw> node scripts/update-to-nightly.js --deploy                  # update + deploy to nextnet
+```
+
+Use `--skip-aztec-up` to skip Aztec CLI installation. In CI (`CI=1`), the script installs Aztec via curl instead of aztec-up.
 
 ## Development Setup
 

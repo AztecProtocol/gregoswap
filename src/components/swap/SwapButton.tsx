@@ -3,12 +3,11 @@ import { Button } from '@mui/material';
 interface SwapButtonProps {
   onClick: () => void;
   disabled: boolean;
-  loading: boolean;
   contractsLoading: boolean;
   hasAmount: boolean;
 }
 
-export function SwapButton({ onClick, disabled, loading, contractsLoading, hasAmount }: SwapButtonProps) {
+export function SwapButton({ onClick, disabled, contractsLoading, hasAmount }: SwapButtonProps) {
   const getButtonText = () => {
     if (contractsLoading) {
       return 'Loading contracts...';
@@ -24,7 +23,7 @@ export function SwapButton({ onClick, disabled, loading, contractsLoading, hasAm
       fullWidth
       variant="contained"
       size="large"
-      disabled={disabled || loading}
+      disabled={disabled}
       onClick={onClick}
       sx={{
         mt: 3,
