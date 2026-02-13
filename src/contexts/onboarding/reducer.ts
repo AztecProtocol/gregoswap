@@ -12,6 +12,7 @@ import { createReducerHook, type ActionsFrom } from '../utils';
 export type OnboardingStatus =
   | 'idle'
   | 'connecting'
+  | 'deploying_account'
   | 'registering'
   | 'simulating'
   | 'registering_drip'
@@ -44,11 +45,14 @@ export interface OnboardingState {
   error: string | null;
   hasRegisteredBase: boolean;
   hasSimulated: boolean;
+  hasDeployedAccount: boolean;
   needsDrip: boolean;
   dripPhase: DripPhase;
   dripError: string | null;
   /** Whether simulation capabilities were granted in the manifest */
   hasSimulationGrant: boolean;
+  /** Whether the user chose to continue with the embedded wallet */
+  useEmbeddedWallet: boolean;
 }
 
 export const initialOnboardingState: OnboardingState = {
@@ -60,10 +64,12 @@ export const initialOnboardingState: OnboardingState = {
   error: null,
   hasRegisteredBase: false,
   hasSimulated: false,
+  hasDeployedAccount: false,
   needsDrip: false,
   dripPhase: 'idle',
   dripError: null,
   hasSimulationGrant: false,
+  useEmbeddedWallet: false,
 };
 
 // =============================================================================
@@ -77,7 +83,9 @@ export const onboardingActions = {
   setPassword: (password: string) => ({ type: 'onboarding/SET_PASSWORD' as const, password }),
   markRegistered: () => ({ type: 'onboarding/MARK_REGISTERED' as const }),
   markSimulated: () => ({ type: 'onboarding/MARK_SIMULATED' as const }),
+  markDeployedAccount: () => ({ type: 'onboarding/MARK_DEPLOYED_ACCOUNT' as const }),
   markNeedsDrip: () => ({ type: 'onboarding/MARK_NEEDS_DRIP' as const }),
+  selectEmbeddedWallet: () => ({ type: 'onboarding/SELECT_EMBEDDED_WALLET' as const }),
   setSimulationGrant: (granted: boolean) => ({ type: 'onboarding/SET_SIMULATION_GRANT' as const, granted }),
   complete: () => ({ type: 'onboarding/COMPLETE' as const }),
   closeModal: () => ({ type: 'onboarding/CLOSE_MODAL' as const }),
@@ -126,8 +134,14 @@ export function onboardingReducer(state: OnboardingState, action: OnboardingActi
     case 'onboarding/MARK_SIMULATED':
       return { ...state, hasSimulated: true };
 
+    case 'onboarding/MARK_DEPLOYED_ACCOUNT':
+      return { ...state, hasDeployedAccount: true };
+
     case 'onboarding/MARK_NEEDS_DRIP':
       return { ...state, needsDrip: true, pendingSwap: false };
+
+    case 'onboarding/SELECT_EMBEDDED_WALLET':
+      return { ...state, useEmbeddedWallet: true, status: 'deploying_account' };
 
     case 'onboarding/SET_SIMULATION_GRANT':
       return { ...state, hasSimulationGrant: action.granted };
@@ -169,7 +183,31 @@ export function onboardingReducer(state: OnboardingState, action: OnboardingActi
 // Helpers
 // =============================================================================
 
-export function calculateCurrentStep(status: OnboardingStatus, needsDrip: boolean): number {
+export function calculateCurrentStep(status: OnboardingStatus, needsDrip: boolean, useEmbeddedWallet: boolean): number {
+  if (useEmbeddedWallet) {
+    switch (status) {
+      case 'idle':
+        return 0;
+      case 'connecting':
+        return 1;
+      case 'deploying_account':
+        return 2;
+      case 'registering':
+        return 3;
+      case 'simulating':
+        return 4;
+      case 'registering_drip':
+        return 4;
+      case 'awaiting_drip':
+      case 'executing_drip':
+        return 5;
+      case 'completed':
+        return needsDrip ? 6 : 5;
+      default:
+        return 0;
+    }
+  }
+
   switch (status) {
     case 'idle':
       return 0;
@@ -191,23 +229,42 @@ export function calculateCurrentStep(status: OnboardingStatus, needsDrip: boolea
   }
 }
 
-export function getOnboardingSteps(hasSimulationGrant: boolean): OnboardingStep[] {
-  return [
-    { label: 'Connect Wallet', description: 'Select your account from the wallet extension' },
-    { label: 'Register Contracts', description: 'Registering any missing contracts' },
-    hasSimulationGrant
-      ? { label: 'Fetch Balances', description: 'Fetching your token balances' }
-      : { label: 'Approve Queries', description: 'Review and approve batched queries in your wallet' },
+export function getOnboardingSteps(hasSimulationGrant: boolean, useEmbeddedWallet: boolean = false): OnboardingStep[] {
+  const steps: OnboardingStep[] = [
+    { label: 'Choose Wallet', description: 'Select how you want to connect' },
   ];
+
+  if (useEmbeddedWallet) {
+    steps.push({ label: 'Deploy Account', description: 'Deploying your account on-chain' });
+  }
+
+  steps.push({ label: 'Register Contracts', description: 'Registering any missing contracts' });
+
+  if (useEmbeddedWallet || hasSimulationGrant) {
+    steps.push({ label: 'Fetch Balances', description: 'Fetching your token balances' });
+  } else {
+    steps.push({ label: 'Approve Queries', description: 'Review and approve batched queries in your wallet' });
+  }
+
+  return steps;
 }
 
-export function getOnboardingStepsWithDrip(hasSimulationGrant: boolean): OnboardingStep[] {
-  return [
-    { label: 'Connect Wallet', description: 'Select your account from the wallet extension' },
+export function getOnboardingStepsWithDrip(hasSimulationGrant: boolean, useEmbeddedWallet: boolean = false): OnboardingStep[] {
+  const steps: OnboardingStep[] = [
+    { label: 'Choose Wallet', description: 'Select how you want to connect' },
+  ];
+
+  if (useEmbeddedWallet) {
+    steps.push({ label: 'Deploy Account', description: 'Deploying your account on-chain' });
+  }
+
+  steps.push(
     { label: 'Register Contracts', description: 'Registering any missing contracts' },
     { label: 'Register Faucet', description: 'Registering the token faucet contract if needed' },
     { label: 'Claim Tokens', description: 'Claiming your free GregoCoin tokens' },
-  ];
+  );
+
+  return steps;
 }
 
 // Keep backwards-compatible exports for default (no grant) case

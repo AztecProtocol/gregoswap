@@ -13,6 +13,7 @@ import { AccountManager, type SimulateOptions } from '@aztec/aztec.js/wallet';
 import type { AztecNode } from '@aztec/aztec.js/node';
 import type { SimulateInteractionOptions } from '@aztec/aztec.js/contracts';
 import { Fr, GrumpkinScalar } from '@aztec/aztec.js/fields';
+import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import {
   BaseWallet,
   buildMergedSimulationResult,
@@ -20,6 +21,37 @@ import {
   simulateViaNode,
   type FeeOptions,
 } from '@aztec/wallet-sdk/base-wallet';
+
+const STORAGE_KEY_SECRET = 'gregoswap_embedded_secret';
+const STORAGE_KEY_SALT = 'gregoswap_embedded_salt';
+
+function loadOrGenerateCredentials(): { secret: Fr; salt: Fr } {
+  try {
+    const storedSecret = localStorage.getItem(STORAGE_KEY_SECRET);
+    const storedSalt = localStorage.getItem(STORAGE_KEY_SALT);
+
+    if (storedSecret && storedSalt) {
+      return {
+        secret: Fr.fromString(storedSecret),
+        salt: Fr.fromString(storedSalt),
+      };
+    }
+  } catch {
+    // localStorage unavailable, fall through to generate
+  }
+
+  const secret = Fr.random();
+  const salt = Fr.random();
+
+  try {
+    localStorage.setItem(STORAGE_KEY_SECRET, secret.toString());
+    localStorage.setItem(STORAGE_KEY_SALT, salt.toString());
+  } catch {
+    // localStorage unavailable, credentials will only persist in-memory for this session
+  }
+
+  return { secret, salt };
+}
 
 /**
  * Data for generating an account.
@@ -41,6 +73,7 @@ export interface AccountData {
 
 export class EmbeddedWallet extends BaseWallet {
   protected accounts: Map<string, Account> = new Map();
+  private accountManager: AccountManager | null = null;
 
   constructor(pxe: PXE, aztecNode: AztecNode) {
     super(pxe, aztecNode);
@@ -96,15 +129,41 @@ export class EmbeddedWallet extends BaseWallet {
 
   async getAccounts() {
     if (this.accounts.size === 0) {
+      const { secret, salt } = loadOrGenerateCredentials();
       const accountManager = await this.createAccount({
-        salt: Fr.ZERO,
-        secret: Fr.ZERO,
-        contract: new SchnorrAccountContract(deriveSigningKey(Fr.ZERO)),
+        secret,
+        salt,
+        contract: new SchnorrAccountContract(deriveSigningKey(secret)),
       });
+      this.accountManager = accountManager;
       const account = await accountManager.getAccount();
       this.accounts.set(accountManager.address.toString(), account);
     }
     return Array.from(this.accounts.values()).map(acc => ({ item: acc.getAddress(), alias: '' }));
+  }
+
+  getAccountManager(): AccountManager {
+    if (!this.accountManager) {
+      throw new Error('Account not yet initialized. Call getAccounts() first.');
+    }
+    return this.accountManager;
+  }
+
+  async isAccountDeployed(): Promise<boolean> {
+    const accountManager = this.getAccountManager();
+    const metadata = await this.getContractMetadata(accountManager.address);
+    return metadata.isContractInitialized;
+  }
+
+  async deployAccount(sponsoredFPCAddress: AztecAddress) {
+    const accountManager = this.getAccountManager();
+    const deployMethod = await accountManager.getDeployMethod();
+    return deployMethod.send({
+      from: AztecAddress.ZERO,
+      fee: {
+        paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPCAddress),
+      },
+    });
   }
 
   private async getFakeAccountDataFor(address: AztecAddress) {

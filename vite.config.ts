@@ -109,7 +109,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     optimizeDeps: {
-      exclude: ['@aztec/noir-acvm_js', '@aztec/noir-noirc_abi'],
+      exclude: ['@aztec/noir-acvm_js', '@aztec/noir-noirc_abi', '@aztec/bb.js'],
     },
     plugins: [
       react({ jsxImportSource: '@emotion/react' }),

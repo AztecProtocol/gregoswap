@@ -19,7 +19,7 @@ import type { Balances } from '../../types';
 
 export function SwapContainer() {
   const { isLoadingContracts, fetchBalances } = useContracts();
-  const { isUsingEmbeddedWallet, currentAddress } = useWallet();
+  const { currentAddress } = useWallet();
   const {
     status: onboardingStatus,
     startOnboarding,
@@ -51,9 +51,11 @@ export function SwapContainer() {
 
   const swapErrorRef = useRef<HTMLDivElement | null>(null);
 
+  const isOnboarded = onboardingStatus === 'completed';
+
   // Fetch balances
   const refetchBalances = useCallback(async () => {
-    if (isUsingEmbeddedWallet || !currentAddress) {
+    if (!isOnboarded || !currentAddress) {
       setBalances({ gregoCoin: null, gregoCoinPremium: null });
       return;
     }
@@ -67,14 +69,14 @@ export function SwapContainer() {
     } finally {
       setIsLoadingBalances(false);
     }
-  }, [fetchBalances, currentAddress, isUsingEmbeddedWallet]);
+  }, [fetchBalances, currentAddress, isOnboarded]);
 
-  // Clear balances when switching to embedded wallet or losing address
+  // Clear balances when not onboarded or losing address
   useEffect(() => {
-    if (isUsingEmbeddedWallet || !currentAddress) {
+    if (!isOnboarded || !currentAddress) {
       setBalances({ gregoCoin: null, gregoCoinPremium: null });
     }
-  }, [isUsingEmbeddedWallet, currentAddress]);
+  }, [isOnboarded, currentAddress]);
 
   // Refetch balances when onboarding completes
   useEffect(() => {
@@ -101,10 +103,10 @@ export function SwapContainer() {
 
   const handleSwapClick = () => {
     // Check if user needs onboarding
-    if (isUsingEmbeddedWallet || onboardingStatus === 'idle') {
+    if (!isOnboarded) {
       // Start onboarding - user initiated a swap transaction
       startOnboarding(true);
-    } else if (onboardingStatus === 'completed') {
+    } else {
       // Already onboarded, execute swap directly
       executeSwap();
     }
@@ -122,7 +124,7 @@ export function SwapContainer() {
     }
   };
 
-  const showBalance = !isUsingEmbeddedWallet && currentAddress !== null;
+  const showBalance = isOnboarded && currentAddress !== null;
 
   // Only disable inputs when swap is in progress
   const disableFromBox = isSwapping;

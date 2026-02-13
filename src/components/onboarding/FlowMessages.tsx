@@ -12,6 +12,26 @@ interface FlowMessagesProps {
 }
 
 export function FlowMessages({ status, hasSimulationGrant }: FlowMessagesProps) {
+  // Show message during account deployment
+  if (status === 'deploying_account') {
+    return (
+      <Box
+        sx={{
+          mt: 3,
+          p: 2,
+          backgroundColor: 'rgba(212, 255, 40, 0.05)',
+          border: '1px solid',
+          borderColor: 'rgba(212, 255, 40, 0.2)',
+          borderRadius: 1,
+        }}
+      >
+        <Typography variant="body2" color="text.secondary">
+          Deploying your account on-chain. This may take a moment...
+        </Typography>
+      </Box>
+    );
+  }
+
   // Show message during simulation - different text based on whether grant was given
   if (status === 'simulating') {
     return (

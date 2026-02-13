@@ -17,8 +17,10 @@ import { useOnboarding } from '../contexts/onboarding';
 
 export function NetworkSwitcher() {
   const { activeNetwork, availableNetworks, switchNetwork } = useNetwork();
-  const { isUsingEmbeddedWallet, disconnectWallet } = useWallet();
-  const { resetOnboarding } = useOnboarding();
+  const { disconnectWallet } = useWallet();
+  const { resetOnboarding, status: onboardingStatus } = useOnboarding();
+
+  const isOnboarded = onboardingStatus === 'completed';
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingNetwork, setPendingNetwork] = useState<string | null>(null);
@@ -27,12 +29,12 @@ export function NetworkSwitcher() {
     const networkId = event.target.value;
     if (networkId === activeNetwork.id) return;
 
-    // If wallet is connected, show confirmation dialog
-    if (!isUsingEmbeddedWallet) {
+    // If user has completed onboarding (external or embedded), show confirmation dialog
+    if (isOnboarded) {
       setPendingNetwork(networkId);
       setConfirmOpen(true);
     } else {
-      // Embedded wallet, switch immediately
+      // Not yet onboarded, switch immediately
       switchNetwork(networkId);
     }
   };

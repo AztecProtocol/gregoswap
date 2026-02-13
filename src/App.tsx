@@ -11,12 +11,14 @@ import { OnboardingModal } from './components/OnboardingModal';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 
 export function App() {
-  const { disconnectWallet, setCurrentAddress, isUsingEmbeddedWallet, currentAddress, error: walletError, isLoading: walletLoading } = useWallet();
-  const { isOnboardingModalOpen, startOnboarding, resetOnboarding } = useOnboarding();
+  const { disconnectWallet, setCurrentAddress, currentAddress, error: walletError, isLoading: walletLoading } = useWallet();
+  const { isOnboardingModalOpen, startOnboarding, resetOnboarding, status: onboardingStatus } = useOnboarding();
+
+  const isOnboarded = onboardingStatus === 'completed';
 
   const handleWalletClick = () => {
-    // If already connected, start a new onboarding flow to change wallet
-    if (!isUsingEmbeddedWallet && currentAddress) {
+    // If already onboarded, start a new onboarding flow to change wallet
+    if (isOnboarded && currentAddress) {
       resetOnboarding();
     }
     startOnboarding(); // Start onboarding when clicked from wallet chip
@@ -60,7 +62,7 @@ export function App() {
         {/* Wallet Connection Chip */}
         <WalletChip
           address={currentAddress?.toString() || null}
-          isConnected={!isUsingEmbeddedWallet && currentAddress !== null}
+          isConnected={isOnboarded && currentAddress !== null}
           onClick={handleWalletClick}
           onDisconnect={handleDisconnect}
         />

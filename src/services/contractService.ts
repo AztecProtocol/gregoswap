@@ -311,6 +311,38 @@ export async function executeDrip(
 }
 
 /**
+ * Deploys the embedded wallet's account contract on-chain using SponsoredFPC for fees.
+ * Registers the SponsoredFPC contract if not already registered, checks if the account
+ * is already deployed, and deploys if needed.
+ */
+export async function deployEmbeddedAccount(
+  wallet: Wallet,
+  node: AztecNode,
+): Promise<void> {
+  const { EmbeddedWallet } = await import('../embedded_wallet');
+
+  if (!(wallet instanceof EmbeddedWallet)) {
+    throw new Error('deployEmbeddedAccount can only be called with an EmbeddedWallet');
+  }
+
+  // Check if already deployed
+  const isDeployed = await wallet.isAccountDeployed();
+  if (isDeployed) {
+    return;
+  }
+
+  // Register SponsoredFPC contract if needed
+  const { instance: sponsoredFPCInstance, artifact: SponsoredFPCContractArtifact } = await getSponsoredFPCData();
+  const sponsoredFPCMetadata = await wallet.getContractMetadata(sponsoredFPCInstance.address);
+  if (!sponsoredFPCMetadata.instance) {
+    await wallet.registerContract(sponsoredFPCInstance, SponsoredFPCContractArtifact);
+  }
+
+  // Deploy the account
+  await wallet.deployAccount(sponsoredFPCInstance.address);
+}
+
+/**
  * Parses a drip error into a user-friendly message
  */
 export function parseDripError(error: unknown): string {

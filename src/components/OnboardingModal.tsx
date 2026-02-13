@@ -49,6 +49,7 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
     dismissDripError,
     setSimulationGrant,
     hasSimulationGrant,
+    selectEmbeddedWallet,
   } = useOnboarding();
   const { discoverWallets, initiateConnection, confirmConnection, cancelConnection, onWalletDisconnect } = useWallet();
   const { activeNetwork } = useNetwork();
@@ -107,7 +108,8 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
         setDiscoveredWallets(prev => [...prev, wallet]);
       }
       if (!foundAny) {
-        setAccountsError('No wallets found. Make sure your wallet extension is installed.');
+        // No external wallets found — still show wallet selection phase so the embedded option is visible
+        setConnectionPhase('selecting_wallet');
       }
     })();
 
@@ -140,7 +142,8 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
     }
 
     if (!foundAny) {
-      setAccountsError('No wallets found. Make sure your wallet extension is installed.');
+      // No external wallets found — still show wallet selection phase so the embedded option is visible
+      setConnectionPhase('selecting_wallet');
     }
   };
 
@@ -244,7 +247,7 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
 
   // Computed display states
   const showWalletSelection =
-    status === 'connecting' && connectionPhase === 'selecting_wallet' && discoveredWallets.length > 0;
+    status === 'connecting' && connectionPhase === 'selecting_wallet';
   const showEmojiVerification = status === 'connecting' && connectionPhase === 'verifying' && pendingConnection !== null;
   const showAccountSelection = status === 'connecting' && connectionPhase === 'selecting_account' && accounts.length > 0;
   const showCompletionTransition = status === 'completed';
@@ -321,8 +324,8 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
             {/* Wallet Connection Flow */}
             <Collapse in={status === 'connecting'} timeout={400}>
               <Box sx={{ pl: 5, pr: 2, pb: 2 }}>
-                {isLoadingAccounts && connectionPhase === 'discovering' ? (
-                  <WalletDiscovery />
+                {connectionPhase === 'discovering' ? (
+                  <WalletDiscovery onUseEmbedded={selectEmbeddedWallet} />
                 ) : isLoadingAccounts && connectionPhase === 'connecting' && selectedWallet ? (
                   <ConnectingWallet wallet={selectedWallet} />
                 ) : showWalletSelection ? (
@@ -331,6 +334,7 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
                     cancelledWalletIds={cancelledWalletIds}
                     onSelect={handleWalletSelect}
                     onRefresh={handleRediscover}
+                    onUseEmbedded={selectEmbeddedWallet}
                   />
                 ) : showEmojiVerification && selectedWallet && pendingConnection ? (
                   <EmojiVerification
