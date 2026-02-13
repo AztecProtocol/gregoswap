@@ -76,7 +76,6 @@ export function WalletDiscovery({ onUseEmbedded }: WalletDiscoveryProps) {
 
       {/* Discovery indicator */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, py: 1.5 }}>
-        <CircularProgress size={14} sx={{ color: 'text.secondary' }} />
         <Typography variant="caption" color="text.secondary">
           Looking for external wallets...
         </Typography>

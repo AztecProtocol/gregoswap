@@ -50,6 +50,7 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
     setSimulationGrant,
     hasSimulationGrant,
     selectEmbeddedWallet,
+    useEmbeddedWallet,
   } = useOnboarding();
   const { discoverWallets, initiateConnection, confirmConnection, cancelConnection, onWalletDisconnect } = useWallet();
   const { activeNetwork } = useNetwork();
@@ -350,7 +351,7 @@ export function OnboardingModal({ open, onAccountSelect }: OnboardingModalProps)
             </Collapse>
 
             {/* Flow-specific Messages */}
-            <FlowMessages status={status} hasSimulationGrant={hasSimulationGrant} />
+            <FlowMessages status={status} hasSimulationGrant={hasSimulationGrant} useEmbeddedWallet={useEmbeddedWallet} />
 
             {/* Drip Password Input (shown when balance is 0) */}
             <Collapse in={status === 'awaiting_drip'} timeout={400}>

@@ -9,9 +9,10 @@ import type { OnboardingStatus } from '../../contexts/onboarding';
 interface FlowMessagesProps {
   status: OnboardingStatus;
   hasSimulationGrant?: boolean;
+  useEmbeddedWallet?: boolean;
 }
 
-export function FlowMessages({ status, hasSimulationGrant }: FlowMessagesProps) {
+export function FlowMessages({ status, hasSimulationGrant, useEmbeddedWallet }: FlowMessagesProps) {
   // Show message during account deployment
   if (status === 'deploying_account') {
     return (
@@ -46,7 +47,7 @@ export function FlowMessages({ status, hasSimulationGrant }: FlowMessagesProps) 
         }}
       >
         <Typography variant="body2" color="text.secondary">
-          {hasSimulationGrant
+          {useEmbeddedWallet || hasSimulationGrant
             ? 'Fetching your token balances...'
             : 'Please approve the batched queries in your wallet. This is a one-time setup that enables seamless interactions going forward.'}
         </Typography>
@@ -62,14 +63,20 @@ export function FlowMessages({ status, hasSimulationGrant }: FlowMessagesProps) 
           <Typography variant="body2" sx={{ mb: 1.5 }}>
             Uh oh! You have no GregoCoin balance!
           </Typography>
-          <Typography variant="body2" component="div">
-            <strong>Next steps:</strong>
-            <ol style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
-              <li>Approve the registration of ProofOfPassword contract in your wallet</li>
-              <li>Provide the password to claim your tokens</li>
-              <li>Authorize the transaction</li>
-            </ol>
-          </Typography>
+          {useEmbeddedWallet ? (
+            <Typography variant="body2">
+              Registering the token faucet. You'll be able to claim free tokens shortly.
+            </Typography>
+          ) : (
+            <Typography variant="body2" component="div">
+              <strong>Next steps:</strong>
+              <ol style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
+                <li>Approve the registration of ProofOfPassword contract in your wallet</li>
+                <li>Provide the password to claim your tokens</li>
+                <li>Authorize the transaction</li>
+              </ol>
+            </Typography>
+          )}
         </Alert>
       </Box>
     );

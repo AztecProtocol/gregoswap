@@ -8,6 +8,7 @@ import { SwapContainer } from './components/swap';
 import { useWallet } from './contexts/wallet';
 import { useOnboarding } from './contexts/onboarding';
 import { OnboardingModal } from './components/OnboardingModal';
+import { TxNotificationCenter } from './components/TxNotificationCenter';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 
 export function App() {
@@ -133,6 +134,9 @@ export function App() {
           setCurrentAddress(address);
         }}
       />
+
+      {/* Transaction Progress Toasts (embedded wallet only) */}
+      <TxNotificationCenter />
     </ThemeProvider>
   );
 }
