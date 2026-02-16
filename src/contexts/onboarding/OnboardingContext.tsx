@@ -20,7 +20,7 @@ import {
   type OnboardingResult,
   type DripPhase,
 } from './reducer';
-import { parseDripError } from '../../services/contractService';
+import { parseDripError, deployEmbeddedAccount } from '../../services/contractService';
 
 export type { OnboardingStatus, OnboardingStep };
 export { ONBOARDING_STEPS, ONBOARDING_STEPS_WITH_DRIP, getOnboardingSteps, getOnboardingStepsWithDrip };
@@ -35,6 +35,7 @@ interface OnboardingContextType {
   isOnboardingModalOpen: boolean;
   onboardingResult: OnboardingResult | null;
   needsDrip: boolean;
+  useEmbeddedWallet: boolean;
 
   // Derived state
   isSwapPending: boolean;
@@ -58,6 +59,7 @@ interface OnboardingContextType {
   markRegistered: () => void;
   markSimulated: () => void;
   setSimulationGrant: (granted: boolean) => void;
+  selectEmbeddedWallet: () => void;
   closeModal: () => void;
   clearSwapPending: () => void;
   completeDripOnboarding: (password: string) => void;
@@ -91,7 +93,7 @@ function setStoredOnboardingStatus(address: AztecAddress | null, completed: bool
 }
 
 export function OnboardingProvider({ children }: OnboardingProviderProps) {
-  const { currentAddress, isUsingEmbeddedWallet } = useWallet();
+  const { wallet, currentAddress, isUsingEmbeddedWallet, node } = useWallet();
   const { simulateOnboardingQueries, isLoadingContracts, registerBaseContracts, registerDripContracts, drip } =
     useContracts();
 
@@ -102,10 +104,11 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
 
   // Computed values
   const steps = state.needsDrip
-    ? getOnboardingStepsWithDrip(state.hasSimulationGrant)
-    : getOnboardingSteps(state.hasSimulationGrant);
-  const currentStep = calculateCurrentStep(state.status, state.needsDrip);
-  const totalSteps = state.needsDrip ? 5 : 4;
+    ? getOnboardingStepsWithDrip(state.hasSimulationGrant, state.useEmbeddedWallet)
+    : getOnboardingSteps(state.hasSimulationGrant, state.useEmbeddedWallet);
+  const currentStep = calculateCurrentStep(state.status, state.needsDrip, state.useEmbeddedWallet);
+  const baseSteps = state.useEmbeddedWallet ? 5 : 4;
+  const totalSteps = state.needsDrip ? baseSteps + 1 : baseSteps;
   const isSwapPending = state.status === 'completed' && state.pendingSwap;
   const isDripPending = state.status === 'executing_drip' && state.dripPassword !== null;
   const isDripping = state.dripPhase === 'sending' || state.dripPhase === 'mining';
@@ -116,13 +119,29 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
       if (state.status === 'idle' || state.status === 'completed' || state.status === 'error') return;
 
       try {
-        // Step 1: After wallet connection, register base contracts (AMM, tokens)
+        // Step 1a: After external wallet connection, go straight to registering
         if (
           state.status === 'connecting' &&
           currentAddress &&
           !isUsingEmbeddedWallet &&
           !state.hasRegisteredBase
         ) {
+          actions.markRegistered();
+          actions.advanceStatus('registering');
+          await registerBaseContracts();
+        }
+
+        // Step 1b: After embedded wallet selection, deploy account if needed
+        if (
+          state.status === 'deploying_account' &&
+          currentAddress &&
+          wallet &&
+          node &&
+          !state.hasDeployedAccount
+        ) {
+          actions.markDeployedAccount();
+          await deployEmbeddedAccount(wallet, node);
+          // After deployment, proceed to register contracts
           actions.markRegistered();
           actions.advanceStatus('registering');
           await registerBaseContracts();
@@ -168,8 +187,12 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     state.status,
     state.hasRegisteredBase,
     state.hasSimulated,
+    state.hasDeployedAccount,
+    state.useEmbeddedWallet,
     currentAddress,
     isUsingEmbeddedWallet,
+    wallet,
+    node,
     isLoadingContracts,
     simulateOnboardingQueries,
     registerBaseContracts,
@@ -217,6 +240,7 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     isOnboardingModalOpen: state.isModalOpen,
     onboardingResult: state.result,
     needsDrip: state.needsDrip,
+    useEmbeddedWallet: state.useEmbeddedWallet,
     isSwapPending,
     isDripPending,
     dripPassword: state.dripPassword,
@@ -232,6 +256,7 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     markRegistered: actions.markRegistered,
     markSimulated: actions.markSimulated,
     setSimulationGrant: actions.setSimulationGrant,
+    selectEmbeddedWallet: actions.selectEmbeddedWallet,
     closeModal: actions.closeModal,
     clearSwapPending: actions.clearPendingSwap,
     completeDripOnboarding: actions.setPassword,

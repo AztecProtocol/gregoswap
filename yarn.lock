@@ -999,7 +999,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@aztec/protocol-contracts@npm:4.0.0-devnet.1-patch.0":
+"@aztec/protocol-contracts@npm:4.0.0-devnet.1-patch.0, @aztec/protocol-contracts@npm:v4.0.0-devnet.1-patch.0":
   version: 4.0.0-devnet.1-patch.0
   resolution: "@aztec/protocol-contracts@npm:4.0.0-devnet.1-patch.0"
   dependencies:
@@ -6085,6 +6085,7 @@ __metadata:
     "@aztec/entrypoints": "npm:v4.0.0-devnet.1-patch.0"
     "@aztec/foundation": "npm:v4.0.0-devnet.1-patch.0"
     "@aztec/noir-contracts.js": "npm:v4.0.0-devnet.1-patch.0"
+    "@aztec/protocol-contracts": "npm:v4.0.0-devnet.1-patch.0"
     "@aztec/pxe": "npm:v4.0.0-devnet.1-patch.0"
     "@aztec/stdlib": "npm:v4.0.0-devnet.1-patch.0"
     "@aztec/test-wallet": "npm:v4.0.0-devnet.1-patch.0"

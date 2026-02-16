@@ -38,7 +38,7 @@ export interface DripContracts {
 /**
  * Helper function to get SponsoredFPC contract data
  */
-async function getSponsoredFPCData() {
+export async function getSponsoredFPCData() {
   const { SponsoredFPCContractArtifact } = await import('@aztec/noir-contracts.js/SponsoredFPC');
   const sponsoredFPCInstance = await getContractInstanceFromInstantiationParams(SponsoredFPCContractArtifact, {
     salt: new Fr(SPONSORED_FPC_SALT),
@@ -54,7 +54,7 @@ async function getSponsoredFPCData() {
 export async function registerSwapContracts(
   wallet: Wallet,
   node: AztecNode,
-  network: NetworkConfig
+  network: NetworkConfig,
 ): Promise<SwapContracts> {
   const gregoCoinAddress = AztecAddressClass.fromString(network.contracts.gregoCoin);
   const gregoCoinPremiumAddress = AztecAddressClass.fromString(network.contracts.gregoCoinPremium);
@@ -134,7 +134,7 @@ export async function registerSwapContracts(
 export async function registerDripContracts(
   wallet: Wallet,
   node: AztecNode,
-  network: NetworkConfig
+  network: NetworkConfig,
 ): Promise<DripContracts> {
   const popAddress = AztecAddressClass.fromString(network.contracts.pop);
 
@@ -181,7 +181,7 @@ export async function registerDripContracts(
 export async function getExchangeRate(
   wallet: Wallet,
   contracts: SwapContracts,
-  fromAddress: AztecAddress
+  fromAddress: AztecAddress,
 ): Promise<number> {
   const { gregoCoin, gregoCoinPremium, amm } = contracts;
 
@@ -200,7 +200,7 @@ export async function getExchangeRate(
 export async function fetchBalances(
   wallet: Wallet,
   contracts: SwapContracts,
-  address: AztecAddress
+  address: AztecAddress,
 ): Promise<[bigint, bigint]> {
   const { gregoCoin, gregoCoinPremium } = contracts;
 
@@ -220,7 +220,7 @@ export async function fetchBalances(
 export async function simulateOnboardingQueries(
   wallet: Wallet,
   contracts: SwapContracts,
-  address: AztecAddress
+  address: AztecAddress,
 ): Promise<OnboardingResult> {
   const { gregoCoin, gregoCoinPremium, amm } = contracts;
 
@@ -253,7 +253,7 @@ export async function executeSwap(
   contracts: SwapContracts,
   fromAddress: AztecAddress,
   amountOut: number,
-  amountInMax: number
+  amountInMax: number,
 ): Promise<TxReceipt> {
   const { gregoCoin, gregoCoinPremium, amm } = contracts;
 
@@ -264,7 +264,7 @@ export async function executeSwap(
       gregoCoinPremium.address,
       BigInt(Math.round(amountOut)),
       BigInt(Math.round(amountInMax)),
-      authwitNonce
+      authwitNonce,
     )
     .send({ from: fromAddress });
 }
@@ -298,7 +298,7 @@ export function parseSwapError(error: unknown): string {
 export async function executeDrip(
   pop: ProofOfPasswordContract,
   password: string,
-  recipient: AztecAddress
+  recipient: AztecAddress,
 ): Promise<TxReceipt> {
   const { instance: sponsoredFPCInstance } = await getSponsoredFPCData();
 
@@ -308,6 +308,35 @@ export async function executeDrip(
       paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPCInstance.address),
     },
   });
+}
+
+/**
+ * Deploys the embedded wallet's account contract on-chain using SponsoredFPC for fees.
+ * Registers the SponsoredFPC contract if not already registered, checks if the account
+ * is already deployed, and deploys if needed.
+ */
+export async function deployEmbeddedAccount(wallet: Wallet, node: AztecNode): Promise<void> {
+  const { EmbeddedWallet } = await import('../embedded_wallet');
+
+  if (!(wallet instanceof EmbeddedWallet)) {
+    throw new Error('deployEmbeddedAccount can only be called with an EmbeddedWallet');
+  }
+
+  // Check if already deployed
+  const isDeployed = await wallet.isAccountDeployed();
+  if (isDeployed) {
+    return;
+  }
+
+  // Register SponsoredFPC contract if needed
+  const { instance: sponsoredFPCInstance, artifact: SponsoredFPCContractArtifact } = await getSponsoredFPCData();
+  const sponsoredFPCMetadata = await wallet.getContractMetadata(sponsoredFPCInstance.address);
+  if (!sponsoredFPCMetadata.instance) {
+    await wallet.registerContract(sponsoredFPCInstance, SponsoredFPCContractArtifact);
+  }
+
+  // Deploy the account
+  await wallet.deployAccount(sponsoredFPCInstance.address);
 }
 
 /**
