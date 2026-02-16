@@ -34,6 +34,7 @@ import { txProgress, type PhaseTiming, type TxProgressEvent } from './tx-progres
 import type { FieldsOf } from '@aztec/foundation/types';
 import { GasSettings } from '@aztec/stdlib/gas';
 import { getSponsoredFPCData } from './services';
+import { getCanonicalMultiCallEntrypoint } from '@aztec/protocol-contracts/multi-call-entrypoint/lazy';
 
 const STORAGE_KEY_SECRET = 'gregoswap_embedded_secret';
 const STORAGE_KEY_SALT = 'gregoswap_embedded_salt';
@@ -87,6 +88,7 @@ export interface AccountData {
 export class EmbeddedWallet extends BaseWallet {
   protected accounts: Map<string, Account> = new Map();
   private accountManager: AccountManager | null = null;
+  private skipAuthWitExtraction = false;
 
   constructor(pxe: PXE, aztecNode: AztecNode) {
     super(pxe, aztecNode);
@@ -171,31 +173,46 @@ export class EmbeddedWallet extends BaseWallet {
   async deployAccount(sponsoredFPCAddress: AztecAddress) {
     const accountManager = this.getAccountManager();
     const deployMethod = await accountManager.getDeployMethod();
-    return deployMethod.send({
-      from: AztecAddress.ZERO,
-      fee: {
-        paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPCAddress),
-      },
-    });
+    this.skipAuthWitExtraction = true;
+    try {
+      return await deployMethod.send({
+        from: AztecAddress.ZERO,
+        fee: {
+          paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPCAddress),
+        },
+      });
+    } finally {
+      this.skipAuthWitExtraction = false;
+    }
   }
 
   private async getFakeAccountDataFor(address: AztecAddress) {
-    const originalAccount = await this.getAccountFromAddress(address);
-    const originalAddress = await originalAccount.getCompleteAddress();
-    const contractInstance = await this.pxe.getContractInstance(originalAddress.address);
-    if (!contractInstance) {
-      throw new Error(`No contract instance found for address: ${originalAddress.address}`);
+    if (!address.equals(AztecAddress.ZERO)) {
+      const originalAccount = await this.getAccountFromAddress(address);
+      const originalAddress = originalAccount.getCompleteAddress();
+      const contractInstance = await this.pxe.getContractInstance(originalAddress.address);
+      if (!contractInstance) {
+        throw new Error(`No contract instance found for address: ${originalAddress.address}`);
+      }
+      const account = createStubAccount(originalAddress);
+      const StubAccountContractArtifact = await getStubAccountContractArtifact();
+      const instance = await getContractInstanceFromInstantiationParams(StubAccountContractArtifact, {
+        salt: Fr.random(),
+      });
+      return {
+        account,
+        instance,
+        artifact: StubAccountContractArtifact,
+      };
+    } else {
+      const contract = await getCanonicalMultiCallEntrypoint();
+      const account = new SignerlessAccount();
+      return {
+        instance: contract.instance,
+        account,
+        artifact: contract.artifact,
+      };
     }
-    const stubAccount = createStubAccount(originalAddress);
-    const StubAccountContractArtifact = await getStubAccountContractArtifact();
-    const instance = await getContractInstanceFromInstantiationParams(StubAccountContractArtifact, {
-      salt: Fr.random(),
-    });
-    return {
-      account: stubAccount,
-      instance,
-      artifact: StubAccountContractArtifact,
-    };
   }
 
   override async simulateTx(executionPayload: ExecutionPayload, opts: SimulateOptions): Promise<TxSimulationResult> {
@@ -288,10 +305,13 @@ export class EmbeddedWallet extends BaseWallet {
     const phaseTimings: TxProgressEvent['phaseTimings'] = {};
     const phases: PhaseTiming[] = [];
 
-    // Derive a human-readable label from the first call in the payload
-    const firstCall = executionPayload.calls?.[0];
-    const fnName = firstCall?.name ?? 'Transaction';
-    const label = fnName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    // Derive a human-readable label from the first meaningful call in the payload
+    // Skip fee payment methods (e.g. sponsor_unconditionally) to find the actual user call
+    const meaningfulCall =
+      executionPayload.calls?.find(c => c.name !== 'sponsor_unconditionally') ?? executionPayload.calls?.[0];
+    const fnName = meaningfulCall?.name ?? 'Transaction';
+    const label =
+      fnName === 'constructor' ? 'Deploy' : fnName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
     const emit = (phase: TxProgressEvent['phase'], extra?: Partial<TxProgressEvent>) => {
       txProgress.emit({
@@ -306,36 +326,35 @@ export class EmbeddedWallet extends BaseWallet {
     };
 
     try {
-      // --- SIMULATING (auth witness extraction) ---
-      emit('simulating');
-      const simulationStart = Date.now();
-
       const feeOptions = await this.completeFeeOptions(opts.from, executionPayload.feePayer, opts.fee?.gasSettings);
+      if (!this.skipAuthWitExtraction) {
+        emit('simulating');
+        const simulationStart = Date.now();
 
-      const simulationResult = await this.simulateViaEntrypoint(executionPayload, opts.from, feeOptions, true, true);
+        const simulationResult = await this.simulateViaEntrypoint(executionPayload, opts.from, feeOptions, true, true);
 
-      // Extract auth witnesses from offchain effects
-      const offchainEffects = collectOffchainEffects(simulationResult.privateExecutionResult);
-      const authWitnesses = await Promise.all(
-        offchainEffects.map(async effect => {
-          try {
-            const authRequest = await CallAuthorizationRequest.fromFields(effect.data);
-            return this.createAuthWit(opts.from, {
-              consumer: effect.contractAddress,
-              innerHash: authRequest.innerHash,
-            });
-          } catch {
-            return undefined; // Not a CallAuthorizationRequest, skip
-          }
-        }),
-      );
-      for (const wit of authWitnesses) {
-        if (wit) executionPayload.authWitnesses.push(wit);
+        const offchainEffects = collectOffchainEffects(simulationResult.privateExecutionResult);
+        const authWitnesses = await Promise.all(
+          offchainEffects.map(async effect => {
+            try {
+              const authRequest = await CallAuthorizationRequest.fromFields(effect.data);
+              return this.createAuthWit(opts.from, {
+                consumer: effect.contractAddress,
+                innerHash: authRequest.innerHash,
+              });
+            } catch {
+              return undefined; // Not a CallAuthorizationRequest, skip
+            }
+          }),
+        );
+        for (const wit of authWitnesses) {
+          if (wit) executionPayload.authWitnesses.push(wit);
+        }
+
+        const simulationDuration = Date.now() - simulationStart;
+        phaseTimings.simulation = simulationDuration;
+        phases.push({ name: 'Simulation', duration: simulationDuration, color: '#ce93d8' });
       }
-
-      const simulationDuration = Date.now() - simulationStart;
-      phaseTimings.simulation = simulationDuration;
-      phases.push({ name: 'Simulation', duration: simulationDuration, color: '#ce93d8' });
 
       // --- PROVING ---
       emit('proving');

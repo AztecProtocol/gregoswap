@@ -136,7 +136,7 @@ export function App() {
       />
 
       {/* Transaction Progress Toasts (embedded wallet only) */}
-      <TxNotificationCenter />
+      <TxNotificationCenter account={currentAddress?.toString()} />
     </ThemeProvider>
   );
 }

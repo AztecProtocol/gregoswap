@@ -81,12 +81,12 @@ function PhaseTimelineBar({ phases }: { phases: PhaseTiming[] }) {
             <Chip
               label={`Preparing: ${formatDuration(preparingDuration)}`}
               size="small"
-              sx={{ height: 18, fontSize: '0.6rem' }}
+              sx={{ height: 18, fontSize: '0.6rem', fontWeight: 600, bgcolor: '#1565c0', color: 'white' }}
             />
             <Chip
               label={`Mining: ${formatDuration(miningDuration)}`}
               size="small"
-              sx={{ height: 18, fontSize: '0.6rem', bgcolor: '#4caf50', color: 'white' }}
+              sx={{ height: 18, fontSize: '0.6rem', fontWeight: 600, bgcolor: '#4caf50', color: 'white' }}
             />
             <Chip
               label={`Total: ${formatDuration(totalDuration)}`}
@@ -179,11 +179,19 @@ interface TxToastProps {
 function TxToast({ event, onDismiss }: TxToastProps) {
   const [elapsed, setElapsed] = useState(Date.now() - event.startTime);
   const [expanded, setExpanded] = useState(true);
+  const frozenElapsed = useRef<number | null>(null);
   const isActive = event.phase !== 'complete' && event.phase !== 'error';
 
-  // Tick elapsed time while active
+  // Tick elapsed time while active, freeze when done
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive) {
+      if (frozenElapsed.current === null) {
+        frozenElapsed.current = Date.now() - event.startTime;
+        setElapsed(frozenElapsed.current);
+      }
+      return;
+    }
+    frozenElapsed.current = null;
     const interval = setInterval(() => setElapsed(Date.now() - event.startTime), 200);
     return () => clearInterval(interval);
   }, [isActive, event.startTime]);
@@ -262,7 +270,7 @@ function TxToast({ event, onDismiss }: TxToastProps) {
 
         {/* Elapsed time */}
         <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', fontFamily: 'monospace' }}>
-          {formatDuration(isActive ? elapsed : Date.now() - event.startTime)}
+          {formatDuration(elapsed)}
         </Typography>
 
         {/* Expand/collapse */}
@@ -299,11 +307,27 @@ function TxToast({ event, onDismiss }: TxToastProps) {
 
 // ─── Notification Center Container ───────────────────────────────────────────
 
-export function TxNotificationCenter() {
+export function TxNotificationCenter({ account }: { account?: string | null }) {
   const [toasts, setToasts] = useState<Map<string, TxProgressEvent>>(new Map());
   const [collapsed, setCollapsed] = useState(false);
   const toastsRef = useRef(toasts);
   toastsRef.current = toasts;
+
+  // Set account scope and load persisted history
+  useEffect(() => {
+    if (!account) return;
+    txProgress.setAccount(account);
+    const history = txProgress.loadHistory();
+    if (history.length > 0) {
+      setToasts(prev => {
+        const next = new Map(prev);
+        for (const event of history) {
+          if (!next.has(event.txId)) next.set(event.txId, event);
+        }
+        return next;
+      });
+    }
+  }, [account]);
 
   useEffect(() => {
     return txProgress.subscribe(event => {
@@ -316,6 +340,7 @@ export function TxNotificationCenter() {
   }, []);
 
   const dismiss = (txId: string) => {
+    txProgress.dismissPersisted(txId);
     setToasts(prev => {
       const next = new Map(prev);
       next.delete(txId);
@@ -344,7 +369,13 @@ export function TxNotificationCenter() {
         '& > *': { pointerEvents: 'auto' },
       }}
     >
-      {/* Collapse / expand toggle */}
+      {/* Toast list (rendered first = bottom in column-reverse) */}
+      {!collapsed &&
+        toastList.map(([txId, event]) => (
+          <TxToast key={txId} event={event} onDismiss={() => dismiss(txId)} />
+        ))}
+
+      {/* Collapse / expand toggle (rendered last = top in column-reverse) */}
       <Tooltip title={collapsed ? 'Show notifications' : 'Hide notifications'} placement="left">
         <IconButton
           size="small"
@@ -367,12 +398,6 @@ export function TxNotificationCenter() {
           {collapsed ? <UnfoldMoreIcon sx={{ fontSize: 16 }} /> : <UnfoldLessIcon sx={{ fontSize: 16 }} />}
         </IconButton>
       </Tooltip>
-
-      {/* Toast list */}
-      {!collapsed &&
-        toastList.map(([txId, event]) => (
-          <TxToast key={txId} event={event} onDismiss={() => dismiss(txId)} />
-        ))}
     </Box>
   );
 }
