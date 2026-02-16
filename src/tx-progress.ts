@@ -12,6 +12,8 @@ export interface PhaseTiming {
   duration: number;
   color: string;
   breakdown?: Array<{ label: string; duration: number }>;
+  /** Extra detail lines shown in the tooltip (e.g. RPC round-trip info) */
+  details?: string[];
 }
 
 export interface TxProgressEvent {

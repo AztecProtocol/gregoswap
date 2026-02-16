@@ -127,9 +127,31 @@ function PhaseTimelineBar({ phases }: { phases: PhaseTiming[] }) {
                   <Typography variant="body2">
                     {formatDurationLong(phase.duration)} ({percentage.toFixed(1)}%)
                   </Typography>
-                  {phase.breakdown?.map((item, idx) => (
-                    <Typography key={idx} variant="caption" sx={{ display: 'block', pl: 1 }}>
-                      {item.label}: {formatDuration(item.duration)}
+                  {phase.breakdown?.map((item, idx) => {
+                    const isChild = item.label.startsWith('  ');
+                    return (
+                      <Typography
+                        key={idx}
+                        variant="caption"
+                        sx={{
+                          display: 'block',
+                          pl: isChild ? 2.5 : 1,
+                          fontWeight: isChild ? 400 : 600,
+                          fontSize: isChild ? '0.65rem' : '0.7rem',
+                          color: isChild ? 'text.secondary' : 'text.primary',
+                        }}
+                      >
+                        {item.label.trimStart()}: {formatDuration(item.duration)}
+                      </Typography>
+                    );
+                  })}
+                  {phase.details?.map((line, idx) => (
+                    <Typography
+                      key={`d-${idx}`}
+                      variant="caption"
+                      sx={{ display: 'block', pl: line.startsWith('  ') ? 2 : 0, mt: idx === 0 ? 0.5 : 0, fontFamily: 'monospace', fontSize: '0.65rem' }}
+                    >
+                      {line}
                     </Typography>
                   ))}
                 </Box>
@@ -177,21 +199,29 @@ interface TxToastProps {
 }
 
 function TxToast({ event, onDismiss }: TxToastProps) {
-  const [elapsed, setElapsed] = useState(Date.now() - event.startTime);
-  const [expanded, setExpanded] = useState(true);
-  const frozenElapsed = useRef<number | null>(null);
   const isActive = event.phase !== 'complete' && event.phase !== 'error';
+
+  // For completed events, compute total from recorded phase timings (stable across refreshes)
+  const computeFinalElapsed = () => {
+    const t = event.phaseTimings;
+    const fromTimings = (t.simulation ?? 0) + (t.proving ?? 0) + (t.sending ?? 0) + (t.mining ?? 0);
+    return fromTimings > 0 ? fromTimings : Date.now() - event.startTime;
+  };
+
+  const [elapsed, setElapsed] = useState(() => isActive ? Date.now() - event.startTime : computeFinalElapsed());
+  const [expanded, setExpanded] = useState(true);
+  const frozen = useRef(!isActive);
 
   // Tick elapsed time while active, freeze when done
   useEffect(() => {
     if (!isActive) {
-      if (frozenElapsed.current === null) {
-        frozenElapsed.current = Date.now() - event.startTime;
-        setElapsed(frozenElapsed.current);
+      if (!frozen.current) {
+        frozen.current = true;
+        setElapsed(computeFinalElapsed());
       }
       return;
     }
-    frozenElapsed.current = null;
+    frozen.current = false;
     const interval = setInterval(() => setElapsed(Date.now() - event.startTime), 200);
     return () => clearInterval(interval);
   }, [isActive, event.startTime]);

@@ -353,7 +353,47 @@ export class EmbeddedWallet extends BaseWallet {
 
         const simulationDuration = Date.now() - simulationStart;
         phaseTimings.simulation = simulationDuration;
-        phases.push({ name: 'Simulation', duration: simulationDuration, color: '#ce93d8' });
+
+        // Build breakdown and details from simulation stats
+        const simStats = simulationResult.stats;
+        const breakdown: Array<{ label: string; duration: number }> = [];
+        const details: string[] = [];
+
+        if (simStats?.timings) {
+          const t = simStats.timings;
+          if (t.sync > 0) breakdown.push({ label: 'Sync', duration: t.sync });
+          if (t.perFunction.length > 0) {
+            const witgenTotal = t.perFunction.reduce((sum, fn) => sum + fn.time, 0);
+            breakdown.push({ label: 'Private execution', duration: witgenTotal });
+            for (const fn of t.perFunction) {
+              breakdown.push({ label: `  ${fn.functionName.split(':').pop() || fn.functionName}`, duration: fn.time });
+            }
+          }
+          if (t.publicSimulation) breakdown.push({ label: 'Public simulation', duration: t.publicSimulation });
+          if (t.unaccounted > 0) breakdown.push({ label: 'Other', duration: t.unaccounted });
+        }
+
+        if (simStats?.nodeRPCCalls?.roundTrips) {
+          const rt = simStats.nodeRPCCalls.roundTrips;
+          const fmt = (ms: number) => (ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`);
+          details.push(`${rt.roundTrips} RPC round-trips (${fmt(rt.totalBlockingTime)} blocking)`);
+          const MAX_METHODS_SHOWN = 3;
+          for (let i = 0; i < rt.roundTripDurations.length; i++) {
+            const allMethods = rt.roundTripMethods[i] ?? [];
+            const count = allMethods.length;
+            const shown = allMethods.slice(0, MAX_METHODS_SHOWN).join(', ');
+            const suffix = count > MAX_METHODS_SHOWN ? `, ... +${count - MAX_METHODS_SHOWN} more` : '';
+            details.push(`  #${i + 1}: ${fmt(rt.roundTripDurations[i])} — ${shown}${suffix} (${count} calls)`);
+          }
+        }
+
+        phases.push({
+          name: 'Simulation',
+          duration: simulationDuration,
+          color: '#ce93d8',
+          ...(breakdown.length > 0 && { breakdown }),
+          ...(details.length > 0 && { details }),
+        });
       }
 
       // --- PROVING ---
