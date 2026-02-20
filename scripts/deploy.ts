@@ -1,7 +1,7 @@
 import { SPONSORED_FPC_SALT } from '@aztec/constants';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
 import { getPXEConfig } from '@aztec/pxe/server';
-import { TestWallet } from '@aztec/test-wallet/server';
+import { EmbeddedWallet } from '@aztec/wallets/embedded';
 import fs from 'fs';
 import path from 'path';
 
@@ -39,12 +39,12 @@ const NETWORK = getNetworkFromArgs();
 // Network-specific node URLs (hardcoded, not configurable)
 const NETWORK_URLS: Record<string, string> = {
   local: 'http://localhost:8080',
-  devnet: 'https://v4-devnet-1.aztec-labs.com',
+  devnet: 'https://v4-devnet-2.aztec-labs.com',
   nextnet: 'https://nextnet.aztec-labs.com',
 };
 
 const AZTEC_NODE_URL = NETWORK_URLS[NETWORK];
-const PROVER_ENABLED = process.env.PROVER_ENABLED === 'false' ? false : true;
+const PROVER_ENABLED = NETWORK !== 'local'; // Disable prover for local to speed up deployment
 
 const PASSWORD = process.env.PASSWORD ? process.env.PASSWORD : undefined;
 
@@ -57,16 +57,9 @@ const PXE_STORE_DIR = path.join(import.meta.dirname, '.pxe-store');
 const INITIAL_TOKEN_BALANCE = 1_000_000_000n;
 
 async function setupWallet(aztecNode: AztecNode) {
-  fs.rmSync(PXE_STORE_DIR, { recursive: true, force: true });
-
-  const config = getPXEConfig();
-  //config.dataDirectory = PXE_STORE_DIR;
-  config.proverEnabled = PROVER_ENABLED;
-
-  return await TestWallet.create(aztecNode, config, {
-    proverOrOptions: {
-      logger: createLogger('bb:native'),
-    },
+  return await EmbeddedWallet.create(aztecNode, {
+    ephemeral: true,
+    pxeConfig: { ...getPXEConfig(), proverEnabled: PROVER_ENABLED },
   });
 }
 
@@ -78,7 +71,7 @@ async function getSponsoredPFCContract() {
   return instance;
 }
 
-async function createAccount(wallet: TestWallet) {
+async function createAccount(wallet: EmbeddedWallet) {
   const salt = Fr.random();
   const secretKey = Fr.random();
   const signingKey = deriveSigningKey(secretKey);
@@ -105,7 +98,7 @@ async function createAccount(wallet: TestWallet) {
   };
 }
 
-async function deployContracts(wallet: TestWallet, deployer: AztecAddress) {
+async function deployContracts(wallet: EmbeddedWallet, deployer: AztecAddress) {
   const sponsoredPFCContract = await getSponsoredPFCContract();
   const paymentMethod = new SponsoredFeePaymentMethod(sponsoredPFCContract.address);
 
@@ -148,21 +141,25 @@ async function deployContracts(wallet: TestWallet, deployer: AztecAddress) {
   const nonceForAuthwits = Fr.random();
   const token0Authwit = await wallet.createAuthWit(deployer, {
     caller: amm.address,
-    action: gregoCoin.methods.transfer_to_public_and_prepare_private_balance_increase(
-      deployer,
-      amm.address,
-      INITIAL_TOKEN_BALANCE,
-      nonceForAuthwits,
-    ),
+    call: await gregoCoin.methods
+      .transfer_to_public_and_prepare_private_balance_increase(
+        deployer,
+        amm.address,
+        INITIAL_TOKEN_BALANCE,
+        nonceForAuthwits,
+      )
+      .getFunctionCall(),
   });
   const token1Authwit = await wallet.createAuthWit(deployer, {
     caller: amm.address,
-    action: gregoCoinPremium.methods.transfer_to_public_and_prepare_private_balance_increase(
-      deployer,
-      amm.address,
-      INITIAL_TOKEN_BALANCE,
-      nonceForAuthwits,
-    ),
+    call: await gregoCoinPremium.methods
+      .transfer_to_public_and_prepare_private_balance_increase(
+        deployer,
+        amm.address,
+        INITIAL_TOKEN_BALANCE,
+        nonceForAuthwits,
+      )
+      .getFunctionCall(),
   });
 
   await new BatchCall(wallet, [

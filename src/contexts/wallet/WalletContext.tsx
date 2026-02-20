@@ -86,9 +86,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
         actions.initStart();
 
         const node = walletService.createNodeClient(nodeUrl);
-        const embeddedWallet = await walletService.createEmbeddedWallet(node);
-        const accounts = await embeddedWallet.getAccounts();
-        const defaultAccountAddress = accounts[0]?.item;
+        const { wallet: embeddedWallet, address: defaultAccountAddress } = await walletService.createEmbeddedWallet(node);
 
         // Store embedded wallet for later restoration
         embeddedWalletRef.current = embeddedWallet;

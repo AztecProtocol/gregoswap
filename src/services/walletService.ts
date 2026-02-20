@@ -13,6 +13,7 @@ import {
   type PendingConnection,
   type DiscoverySession,
 } from '@aztec/wallet-sdk/manager';
+import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import { EmbeddedWallet } from '../embedded_wallet';
 import type { NetworkConfig } from '../config/networks';
 
@@ -26,10 +27,16 @@ export function createNodeClient(nodeUrl: string): AztecNode {
 }
 
 /**
- * Creates an embedded wallet for use without an external wallet
+ * Creates an embedded wallet and ensures it has an account.
+ * Uses the wallet's internal DB for persistence — same address is restored on reload.
+ * Returns the wallet and the account address.
  */
-export async function createEmbeddedWallet(node: AztecNode): Promise<EmbeddedWallet> {
-  return EmbeddedWallet.create(node);
+export async function createEmbeddedWallet(
+  node: AztecNode,
+): Promise<{ wallet: EmbeddedWallet; address: AztecAddress }> {
+  const wallet = await EmbeddedWallet.create(node, { pxeConfig: { proverEnabled: true } });
+  const accountManager = await wallet.getOrCreateAccount();
+  return { wallet, address: accountManager.address };
 }
 
 /**
@@ -85,4 +92,14 @@ export async function disconnectProvider(provider: WalletProvider): Promise<void
   if (provider.disconnect) {
     await provider.disconnect();
   }
+}
+
+/**
+ * Deploys the embedded wallet's account on-chain. Skips if already deployed.
+ */
+export async function deployEmbeddedAccount(wallet: EmbeddedWallet): Promise<void> {
+  if (await wallet.isAccountDeployed()) {
+    return;
+  }
+  await wallet.deployAccount();
 }

@@ -4,7 +4,7 @@
  * Update gregoswap to the latest Aztec nightly version.
  *
  * Usage:
- *   node scripts/update-to-nightly.js [--version VERSION] [--deploy [NETWORK]] [--skip-aztec-up]
+ *   node scripts/update.js [--version VERSION] [--deploy [NETWORK]] [--skip-aztec-up]
  */
 
 import { readFileSync, writeFileSync } from "fs";
@@ -59,14 +59,11 @@ function updatePackageJson(version) {
   const path = resolve(ROOT, "package.json");
   let content = readFileSync(path, "utf-8");
 
-  // Update dependencies
-  content = content.replace(
-    /@aztec\/([^"]+)": "v4\.0\.0-nightly\.\d+"/g,
-    `@aztec/$1": "v${version}"`
-  );
+  // Update @aztec/* dependency versions (any version tag)
+  content = content.replace(/"(@aztec\/[^"]+)": "v[^"]+"/g, `"$1": "v${version}"`);
 
-  // Update version in copy:dependencies script
-  content = content.replace(/v4\.0\.0-nightly\.\d+/g, `v${version}`);
+  // Update version path segments in scripts (e.g. copy:dependencies nargo paths)
+  content = content.replace(/\/aztec-packages\/v[^/]+\//g, `/aztec-packages/v${version}/`);
 
   writeFileSync(path, content, "utf-8");
   log(COLORS.green, "✓ package.json updated\n");
@@ -77,7 +74,7 @@ function updateNargoToml(version) {
   const path = resolve(ROOT, "contracts/proof_of_password/Nargo.toml");
   let content = readFileSync(path, "utf-8");
 
-  content = content.replace(/tag = "v4\.0\.0-nightly\.\d+"/g, `tag = "v${version}"`);
+  content = content.replace(/(git = "https:\/\/github\.com\/AztecProtocol\/aztec-packages[^"]*",\s*tag = ")v[^"]+"/g, `$1v${version}"`);
 
   writeFileSync(path, content, "utf-8");
   log(COLORS.green, "✓ Nargo.toml files updated\n");

@@ -1,261 +1,121 @@
-import { getStubAccountContractArtifact, createStubAccount } from '@aztec/accounts/stub/lazy';
-import { SchnorrAccountContract } from '@aztec/accounts/schnorr/lazy';
-
-import { getPXEConfig, type PXEConfig } from '@aztec/pxe/config';
-import { createPXE, PXE } from '@aztec/pxe/client/lazy';
 import { AztecAddress } from '@aztec/stdlib/aztec-address';
-import { getContractInstanceFromInstantiationParams } from '@aztec/stdlib/contract';
-import {
-  BlockHeader,
-  collectOffchainEffects,
-  mergeExecutionPayloads,
-  type ExecutionPayload,
-  type TxSimulationResult,
-} from '@aztec/stdlib/tx';
-import { AccountFeePaymentMethodOptions, type DefaultAccountEntrypointOptions } from '@aztec/entrypoints/account';
-import { deriveSigningKey } from '@aztec/stdlib/keys';
-import { SignerlessAccount, type Account, type AccountContract } from '@aztec/aztec.js/account';
-import { AccountManager, type SimulateOptions } from '@aztec/aztec.js/wallet';
+import { collectOffchainEffects, type ExecutionPayload } from '@aztec/stdlib/tx';
+import { AccountFeePaymentMethodOptions } from '@aztec/entrypoints/account';
 import type { AztecNode } from '@aztec/aztec.js/node';
 import { type InteractionWaitOptions, NO_WAIT, type SendReturn } from '@aztec/aztec.js/contracts';
-import { Fr, GrumpkinScalar } from '@aztec/aztec.js/fields';
 import { waitForTx } from '@aztec/aztec.js/node';
 import type { SendOptions } from '@aztec/aztec.js/wallet';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { CallAuthorizationRequest } from '@aztec/aztec.js/authorization';
-import {
-  BaseWallet,
-  buildMergedSimulationResult,
-  extractOptimizablePublicStaticCalls,
-  simulateViaNode,
-  type FeeOptions,
-} from '@aztec/wallet-sdk/base-wallet';
+import { type FeeOptions } from '@aztec/wallet-sdk/base-wallet';
 import { txProgress, type PhaseTiming, type TxProgressEvent } from './tx-progress';
 import type { FieldsOf } from '@aztec/foundation/types';
 import { GasSettings } from '@aztec/stdlib/gas';
 import { getSponsoredFPCData } from './services';
-import { getCanonicalMultiCallEntrypoint } from '@aztec/protocol-contracts/multi-call-entrypoint/lazy';
+import {
+  EmbeddedWallet as EmbeddedWalletBase,
+  type AccountType,
+  type EmbeddedWalletOptions,
+} from '@aztec/wallets/embedded';
+import { AccountManager } from '@aztec/aztec.js/wallet';
+import { Fq, Fr } from '@aztec/foundation/curves/bn254';
 
-const STORAGE_KEY_SECRET = 'gregoswap_embedded_secret';
-const STORAGE_KEY_SALT = 'gregoswap_embedded_salt';
-
-function loadOrGenerateCredentials(): { secret: Fr; salt: Fr } {
-  try {
-    const storedSecret = localStorage.getItem(STORAGE_KEY_SECRET);
-    const storedSalt = localStorage.getItem(STORAGE_KEY_SALT);
-
-    if (storedSecret && storedSalt) {
-      return {
-        secret: Fr.fromString(storedSecret),
-        salt: Fr.fromString(storedSalt),
-      };
-    }
-  } catch {
-    // localStorage unavailable, fall through to generate
-  }
-
-  const secret = Fr.random();
-  const salt = Fr.random();
-
-  try {
-    localStorage.setItem(STORAGE_KEY_SECRET, secret.toString());
-    localStorage.setItem(STORAGE_KEY_SALT, salt.toString());
-  } catch {
-    // localStorage unavailable, credentials will only persist in-memory for this session
-  }
-
-  return { secret, salt };
-}
-
-/**
- * Data for generating an account.
- */
-export interface AccountData {
-  /**
-   * Secret to derive the keys for the account.
-   */
-  secret: Fr;
-  /**
-   * Contract address salt.
-   */
-  salt: Fr;
-  /**
-   * Contract that backs the account.
-   */
-  contract: AccountContract;
-}
-
-export class EmbeddedWallet extends BaseWallet {
-  protected accounts: Map<string, Account> = new Map();
-  private accountManager: AccountManager | null = null;
+export class EmbeddedWallet extends EmbeddedWalletBase {
   private skipAuthWitExtraction = false;
 
-  constructor(pxe: PXE, aztecNode: AztecNode) {
-    super(pxe, aztecNode);
+  static override create<T extends EmbeddedWalletBase = EmbeddedWallet>(
+    nodeOrUrl: string | AztecNode,
+    options?: EmbeddedWalletOptions,
+  ): Promise<T> {
+    return super.create<T>(nodeOrUrl, options);
   }
 
-  static async create(aztecNode: AztecNode) {
-    const l1Contracts = await aztecNode.getL1ContractAddresses();
-    const rollupAddress = l1Contracts.rollupAddress;
-
-    const config = getPXEConfig();
-    config.dataDirectory = `pxe-${rollupAddress}`;
-    config.proverEnabled = true;
-    const configWithContracts = {
-      ...config,
-      l1Contracts,
-    } as PXEConfig;
-
-    const pxe = await createPXE(aztecNode, configWithContracts);
-    return new EmbeddedWallet(pxe, aztecNode);
-  }
-
-  private async createAccount(accountData?: AccountData): Promise<AccountManager> {
-    // Generate random values if not provided
-    const secret = accountData?.secret ?? Fr.random();
-    const salt = accountData?.salt ?? Fr.random();
-    // Use SchnorrAccountContract if not provided
-    const contract = accountData?.contract ?? new SchnorrAccountContract(GrumpkinScalar.random());
+  // TODO: remove this once the avoiding reregistration optimization lands on aztec-packages
+  protected override async createAccountInternal(
+    type: AccountType,
+    secret: Fr,
+    salt: Fr,
+    signingKey: Buffer,
+  ): Promise<AccountManager> {
+    let contract;
+    switch (type) {
+      case 'schnorr': {
+        contract = await this.accountContracts.getSchnorrAccountContract(Fq.fromBuffer(signingKey));
+        break;
+      }
+      case 'ecdsasecp256k1': {
+        contract = await this.accountContracts.getEcdsaKAccountContract(signingKey);
+        break;
+      }
+      case 'ecdsasecp256r1': {
+        contract = await this.accountContracts.getEcdsaRAccountContract(signingKey);
+        break;
+      }
+      default: {
+        throw new Error(`Unknown account type ${type}`);
+      }
+    }
 
     const accountManager = await AccountManager.create(this, secret, contract, salt);
 
     const instance = accountManager.getInstance();
-    const artifact = await contract.getContractArtifact();
-
-    await this.registerContract(instance, artifact, secret);
-
-    this.accounts.set(accountManager.address.toString(), await accountManager.getAccount());
+    const existingInstance = await this.pxe.getContractInstance(instance.address);
+    if (!existingInstance) {
+      const existingArtifact = await this.pxe.getContractArtifact(instance.currentContractClassId);
+      await this.registerContract(
+        instance,
+        !existingArtifact ? await accountManager.getAccountContract().getContractArtifact() : undefined,
+        accountManager.getSecretKey(),
+      );
+    }
 
     return accountManager;
   }
 
-  protected async getAccountFromAddress(address: AztecAddress): Promise<Account> {
-    let account: Account | undefined;
-    if (address.equals(AztecAddress.ZERO)) {
-      account = new SignerlessAccount();
-    } else if (this.accounts.has(address.toString())) {
-      account = this.accounts.get(address.toString());
-    } else {
-      throw new Error(`Account with address ${address.toString()} not found in wallet`);
+  /**
+   * Returns the AccountManager for the first stored account, creating a new Schnorr
+   * account (with random credentials) if none exist yet. The account is persisted in
+   * the embedded wallet's internal DB, so the same address is restored on subsequent loads.
+   */
+  async getOrCreateAccount(): Promise<AccountManager> {
+    const existing = await this.getAccounts();
+    if (existing.length > 0) {
+      const { secretKey, salt, signingKey, type } = await this.walletDB.retrieveAccount(existing[0].item);
+      return this.createAccountInternal(type, secretKey, salt, signingKey);
     }
-
-    return account;
-  }
-
-  async getAccounts() {
-    if (this.accounts.size === 0) {
-      const { secret, salt } = loadOrGenerateCredentials();
-      const accountManager = await this.createAccount({
-        secret,
-        salt,
-        contract: new SchnorrAccountContract(deriveSigningKey(secret)),
-      });
-      this.accountManager = accountManager;
-      const account = await accountManager.getAccount();
-      this.accounts.set(accountManager.address.toString(), account);
-    }
-    return Array.from(this.accounts.values()).map(acc => ({ item: acc.getAddress(), alias: '' }));
-  }
-
-  getAccountManager(): AccountManager {
-    if (!this.accountManager) {
-      throw new Error('Account not yet initialized. Call getAccounts() first.');
-    }
-    return this.accountManager;
+    return this.createSchnorrAccount(Fr.random(), Fr.random(), undefined, 'main');
   }
 
   async isAccountDeployed(): Promise<boolean> {
-    const accountManager = this.getAccountManager();
-    const metadata = await this.getContractMetadata(accountManager.address);
+    const [account] = await this.getAccounts();
+    if (!account) {
+      return false;
+    }
+    const metadata = await this.getContractMetadata(account.item);
     return metadata.isContractInitialized;
   }
 
-  async deployAccount(sponsoredFPCAddress: AztecAddress) {
-    const accountManager = this.getAccountManager();
+  async deployAccount() {
+    const accountManager = await this.getOrCreateAccount();
+
+    const { instance: sponsoredFPCInstance, artifact: SponsoredFPCContractArtifact } = await getSponsoredFPCData();
+    const sponsoredFPCMetadata = await this.getContractMetadata(sponsoredFPCInstance.address);
+    if (!sponsoredFPCMetadata.instance) {
+      await this.registerContract(sponsoredFPCInstance, SponsoredFPCContractArtifact);
+    }
+
     const deployMethod = await accountManager.getDeployMethod();
     this.skipAuthWitExtraction = true;
     try {
       return await deployMethod.send({
         from: AztecAddress.ZERO,
         fee: {
-          paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPCAddress),
+          paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPCInstance.address),
         },
       });
     } finally {
       this.skipAuthWitExtraction = false;
     }
-  }
-
-  private async getFakeAccountDataFor(address: AztecAddress) {
-    if (!address.equals(AztecAddress.ZERO)) {
-      const originalAccount = await this.getAccountFromAddress(address);
-      const originalAddress = originalAccount.getCompleteAddress();
-      const contractInstance = await this.pxe.getContractInstance(originalAddress.address);
-      if (!contractInstance) {
-        throw new Error(`No contract instance found for address: ${originalAddress.address}`);
-      }
-      const account = createStubAccount(originalAddress);
-      const StubAccountContractArtifact = await getStubAccountContractArtifact();
-      const instance = await getContractInstanceFromInstantiationParams(StubAccountContractArtifact, {
-        salt: Fr.random(),
-      });
-      return {
-        account,
-        instance,
-        artifact: StubAccountContractArtifact,
-      };
-    } else {
-      const contract = await getCanonicalMultiCallEntrypoint();
-      const account = new SignerlessAccount();
-      return {
-        instance: contract.instance,
-        account,
-        artifact: contract.artifact,
-      };
-    }
-  }
-
-  override async simulateTx(executionPayload: ExecutionPayload, opts: SimulateOptions): Promise<TxSimulationResult> {
-    const feeOptions = opts.fee?.estimateGas
-      ? await this.completeFeeOptionsForEstimation(opts.from, executionPayload.feePayer, opts.fee?.gasSettings)
-      : await this.completeFeeOptions(opts.from, executionPayload.feePayer, opts.fee?.gasSettings);
-    const { optimizableCalls, remainingCalls } = extractOptimizablePublicStaticCalls(executionPayload);
-    const remainingPayload = { ...executionPayload, calls: remainingCalls };
-
-    const chainInfo = await this.getChainInfo();
-    let blockHeader: BlockHeader;
-    // PXE might not be synced yet, so we pull the latest header from the node
-    // To keep things consistent, we'll always try with PXE first
-    try {
-      blockHeader = await this.pxe.getSyncedBlockHeader();
-    } catch {
-      blockHeader = (await this.aztecNode.getBlockHeader())!;
-    }
-
-    const [optimizedResults, normalResult] = await Promise.all([
-      optimizableCalls.length > 0
-        ? simulateViaNode(
-            this.aztecNode,
-            optimizableCalls,
-            opts.from,
-            chainInfo,
-            feeOptions.gasSettings,
-            blockHeader,
-            opts.skipFeeEnforcement ?? true,
-          )
-        : Promise.resolve([]),
-      remainingCalls.length > 0
-        ? this.simulateViaEntrypoint(
-            remainingPayload,
-            opts.from,
-            feeOptions,
-            opts.skipTxValidation,
-            opts.skipFeeEnforcement ?? true,
-          )
-        : Promise.resolve(null),
-    ]);
-
-    return buildMergedSimulationResult(optimizedResults, normalResult);
   }
 
   /**
@@ -331,7 +191,14 @@ export class EmbeddedWallet extends BaseWallet {
         emit('simulating');
         const simulationStart = Date.now();
 
-        const simulationResult = await this.simulateViaEntrypoint(executionPayload, opts.from, feeOptions, true, true);
+        const simulationResult = await this.simulateViaEntrypoint(
+          executionPayload,
+          opts.from,
+          feeOptions,
+          this.scopesFor(opts.from),
+          true,
+          true,
+        );
 
         const offchainEffects = collectOffchainEffects(simulationResult.privateExecutionResult);
         const authWitnesses = await Promise.all(
@@ -401,7 +268,7 @@ export class EmbeddedWallet extends BaseWallet {
       const provingStart = Date.now();
 
       const txRequest = await this.createTxExecutionRequestFromPayloadAndFee(executionPayload, opts.from, feeOptions);
-      const provenTx = await this.pxe.proveTx(txRequest);
+      const provenTx = await this.pxe.proveTx(txRequest, this.scopesFor(opts.from));
 
       const provingDuration = Date.now() - provingStart;
       phaseTimings.proving = provingDuration;
@@ -467,35 +334,5 @@ export class EmbeddedWallet extends BaseWallet {
       emit('error', { error: err instanceof Error ? err.message : 'Transaction failed' });
       throw err;
     }
-  }
-
-  protected override async simulateViaEntrypoint(
-    executionPayload: ExecutionPayload,
-    from: AztecAddress,
-    feeOptions: FeeOptions,
-    _skipTxValidation?: boolean,
-    _skipFeeEnforcement?: boolean,
-  ): Promise<TxSimulationResult> {
-    const { account: fromAccount, instance, artifact } = await this.getFakeAccountDataFor(from);
-
-    const feeExecutionPayload = await feeOptions.walletFeePaymentMethod?.getExecutionPayload();
-    const executionOptions: DefaultAccountEntrypointOptions = {
-      txNonce: Fr.random(),
-      cancellable: this.cancellableTransactions,
-      feePaymentMethodOptions: feeOptions.accountFeePaymentMethodOptions,
-    };
-    const finalExecutionPayload = feeExecutionPayload
-      ? mergeExecutionPayloads([feeExecutionPayload, executionPayload])
-      : executionPayload;
-    const chainInfo = await this.getChainInfo();
-    const txRequest = await fromAccount.createTxExecutionRequest(
-      finalExecutionPayload,
-      feeOptions.gasSettings,
-      chainInfo,
-      executionOptions,
-    );
-    return this.pxe.simulateTx(txRequest, true, true, true, {
-      contracts: { [from.toString()]: { instance, artifact } },
-    });
   }
 }

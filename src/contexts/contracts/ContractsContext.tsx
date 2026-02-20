@@ -83,7 +83,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
 
   // Get exchange rate
   const getExchangeRate = useCallback(async (): Promise<number> => {
-    if (!wallet || !state.contracts.amm || !state.contracts.gregoCoin || !state.contracts.gregoCoinPremium) {
+    if (!wallet || !currentAddress || !state.contracts.amm || !state.contracts.gregoCoin || !state.contracts.gregoCoinPremium) {
       throw new Error('Contracts not initialized');
     }
 
@@ -94,7 +94,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         gregoCoinPremium: state.contracts.gregoCoinPremium,
         amm: state.contracts.amm,
       },
-      currentAddress!,
+      currentAddress,
     );
   }, [wallet, state.contracts, currentAddress]);
 

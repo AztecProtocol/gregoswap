@@ -20,7 +20,9 @@ import {
   type OnboardingResult,
   type DripPhase,
 } from './reducer';
-import { parseDripError, deployEmbeddedAccount } from '../../services/contractService';
+import { parseDripError } from '../../services/contractService';
+import { deployEmbeddedAccount } from '../../services/walletService';
+import { EmbeddedWallet } from '../../embedded_wallet';
 
 export type { OnboardingStatus, OnboardingStep };
 export { ONBOARDING_STEPS, ONBOARDING_STEPS_WITH_DRIP, getOnboardingSteps, getOnboardingStepsWithDrip };
@@ -140,7 +142,7 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
           !state.hasDeployedAccount
         ) {
           actions.markDeployedAccount();
-          await deployEmbeddedAccount(wallet, node);
+          await deployEmbeddedAccount(wallet as EmbeddedWallet);
           // After deployment, proceed to register contracts
           actions.markRegistered();
           actions.advanceStatus('registering');
