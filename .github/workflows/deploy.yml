@@ -61,28 +61,19 @@ jobs:
       - name: Compile contracts
         run: yarn compile:contracts
 
-      - name: Build app
-        run: yarn build
-
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
       - name: Pull Vercel Environment Information
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
-      - name: Prepare prebuilt output
-        run: |
-          mkdir -p .vercel/output
-          cp -r dist .vercel/output/static
-          cp vercel.json .vercel/output/config.json
-
       - name: Deploy to Vercel
         id: deploy
         run: |
           if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            DEPLOY_URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes)
+            DEPLOY_URL=$(vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes)
           else
-            DEPLOY_URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes)
+            DEPLOY_URL=$(vercel deploy --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes)
           fi
           echo "url=$DEPLOY_URL" >> $GITHUB_OUTPUT
 
