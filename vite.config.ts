@@ -102,7 +102,7 @@ export default defineConfig(({ mode }) => {
       // Headers needed for bb WASM to work in multithreaded mode
       headers: {
         'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': 'require-corp',
+        'Cross-Origin-Embedder-Policy': 'credentialless',
       },
       fs: {
         allow: [searchForWorkspaceRoot(process.cwd())],

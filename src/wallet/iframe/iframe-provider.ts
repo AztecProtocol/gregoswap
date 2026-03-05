@@ -56,7 +56,7 @@ export class IframeWalletProvider implements WalletProvider {
       height: 100%;
       display: block;
     `;
-    iframe.allow = 'cross-origin-isolated';
+    iframe.allow = 'storage-access';
     this.iframe = iframe;
 
     if (options?.container) {
