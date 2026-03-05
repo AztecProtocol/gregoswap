@@ -12,13 +12,9 @@ import { txProgress, type PhaseTiming, type TxProgressEvent } from './tx-progres
 import type { FieldsOf } from '@aztec/foundation/types';
 import { GasSettings } from '@aztec/stdlib/gas';
 import { getSponsoredFPCData } from './services';
-import {
-  EmbeddedWallet as EmbeddedWalletBase,
-  type AccountType,
-  type EmbeddedWalletOptions,
-} from '@aztec/wallets/embedded';
+import { EmbeddedWallet as EmbeddedWalletBase, type EmbeddedWalletOptions } from '@aztec/wallets/embedded';
 import { AccountManager } from '@aztec/aztec.js/wallet';
-import { Fq, Fr } from '@aztec/foundation/curves/bn254';
+import { Fr } from '@aztec/foundation/curves/bn254';
 
 export class EmbeddedWallet extends EmbeddedWalletBase {
   private skipAuthWitExtraction = false;
@@ -28,48 +24,6 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
     options?: EmbeddedWalletOptions,
   ): Promise<T> {
     return super.create<T>(nodeOrUrl, options);
-  }
-
-  // TODO: remove this once the avoiding reregistration optimization lands on aztec-packages
-  protected override async createAccountInternal(
-    type: AccountType,
-    secret: Fr,
-    salt: Fr,
-    signingKey: Buffer,
-  ): Promise<AccountManager> {
-    let contract;
-    switch (type) {
-      case 'schnorr': {
-        contract = await this.accountContracts.getSchnorrAccountContract(Fq.fromBuffer(signingKey));
-        break;
-      }
-      case 'ecdsasecp256k1': {
-        contract = await this.accountContracts.getEcdsaKAccountContract(signingKey);
-        break;
-      }
-      case 'ecdsasecp256r1': {
-        contract = await this.accountContracts.getEcdsaRAccountContract(signingKey);
-        break;
-      }
-      default: {
-        throw new Error(`Unknown account type ${type}`);
-      }
-    }
-
-    const accountManager = await AccountManager.create(this, secret, contract, salt);
-
-    const instance = accountManager.getInstance();
-    const existingInstance = await this.pxe.getContractInstance(instance.address);
-    if (!existingInstance) {
-      const existingArtifact = await this.pxe.getContractArtifact(instance.currentContractClassId);
-      await this.registerContract(
-        instance,
-        !existingArtifact ? await accountManager.getAccountContract().getContractArtifact() : undefined,
-        accountManager.getSecretKey(),
-      );
-    }
-
-    return accountManager;
   }
 
   /**
