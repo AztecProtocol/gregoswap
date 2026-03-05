@@ -71,6 +71,8 @@ jobs:
 
       - name: Build and deploy to Vercel
         id: deploy
+        env:
+          VITE_WEB_WALLET_URL: ${{ vars.VITE_WEB_WALLET_URL }}
         run: |
           if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" ]; then
             vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
