@@ -162,7 +162,6 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
   ): Promise<SendReturn<W>> {
     const txId = crypto.randomUUID();
     const startTime = Date.now();
-    const phaseTimings: TxProgressEvent['phaseTimings'] = {};
     const phases: PhaseTiming[] = [];
 
     // Derive a human-readable label from the first meaningful call in the payload
@@ -179,7 +178,7 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
         label,
         phase,
         startTime,
-        phaseTimings: { ...phaseTimings },
+        phaseStartTime: Date.now(),
         phases: [...phases],
         ...extra,
       });
@@ -219,7 +218,6 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
         }
 
         const simulationDuration = Date.now() - simulationStart;
-        phaseTimings.simulation = simulationDuration;
 
         // Build breakdown and details from simulation stats
         const simStats = simulationResult.stats;
@@ -271,7 +269,6 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
       const provenTx = await this.pxe.proveTx(txRequest, this.scopesFor(opts.from));
 
       const provingDuration = Date.now() - provingStart;
-      phaseTimings.proving = provingDuration;
 
       // Extract detailed stats from proving result if available
       const stats = provenTx.stats;
@@ -308,7 +305,6 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
       await this.aztecNode.sendTx(tx);
 
       const sendingDuration = Date.now() - sendingStart;
-      phaseTimings.sending = sendingDuration;
       phases.push({ name: 'Sending', duration: sendingDuration, color: '#2196f3' });
 
       // NO_WAIT: return txHash immediately
@@ -325,7 +321,6 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
       const receipt = await waitForTx(this.aztecNode, txHash, waitOpts);
 
       const miningDuration = Date.now() - miningStart;
-      phaseTimings.mining = miningDuration;
       phases.push({ name: 'Mining', duration: miningDuration, color: '#4caf50' });
 
       emit('complete');

@@ -22,13 +22,8 @@ export interface TxProgressEvent {
   phase: TxPhase;
   /** Wall-clock start time (Date.now()) of this tx */
   startTime: number;
-  /** Per-phase wall-clock durations collected so far */
-  phaseTimings: {
-    simulation?: number;
-    proving?: number;
-    sending?: number;
-    mining?: number;
-  };
+  /** Wall-clock start time of the current phase (Date.now() at emit time) */
+  phaseStartTime: number;
   /** Detailed phase breakdown for the timeline bar */
   phases: PhaseTiming[];
   /** Error message if phase === 'error' */
@@ -70,7 +65,9 @@ class TxProgressEmitter {
     try {
       const raw = localStorage.getItem(this.accountKey);
       if (!raw) return [];
-      return JSON.parse(raw) as TxProgressEvent[];
+      const events = JSON.parse(raw) as TxProgressEvent[];
+      // Backfill phaseStartTime for events persisted before this field existed
+      return events.map(e => ({ phaseStartTime: e.startTime, ...e }));
     } catch {
       return [];
     }
