@@ -2,7 +2,7 @@ import { AztecAddress } from '@aztec/stdlib/aztec-address';
 import { collectOffchainEffects, type ExecutionPayload } from '@aztec/stdlib/tx';
 import { AccountFeePaymentMethodOptions } from '@aztec/entrypoints/account';
 import type { AztecNode } from '@aztec/aztec.js/node';
-import { type InteractionWaitOptions, NO_WAIT, type SendReturn } from '@aztec/aztec.js/contracts';
+import { type InteractionWaitOptions, NO_WAIT, type SendReturn, extractOffchainOutput } from '@aztec/aztec.js/contracts';
 import { waitForTx } from '@aztec/aztec.js/node';
 import type { SendOptions } from '@aztec/aztec.js/wallet';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
@@ -251,6 +251,7 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
       emit('sending');
       const sendingStart = Date.now();
 
+      const offchainOutput = extractOffchainOutput(provenTx.getOffchainEffects());
       const tx = await provenTx.toTx();
       const txHash = tx.getTxHash();
       if (await this.aztecNode.getTxEffect(txHash)) {
@@ -264,7 +265,7 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
       // NO_WAIT: return txHash immediately
       if (opts.wait === NO_WAIT) {
         emit('complete');
-        return txHash as SendReturn<W>;
+        return { txHash, ...offchainOutput } as SendReturn<W>;
       }
 
       // --- MINING ---
@@ -278,7 +279,7 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
       phases.push({ name: 'Mining', duration: miningDuration, color: '#4caf50' });
 
       emit('complete');
-      return receipt as SendReturn<W>;
+      return { receipt, ...offchainOutput } as SendReturn<W>;
     } catch (err) {
       emit('error', { error: err instanceof Error ? err.message : 'Transaction failed' });
       throw err;

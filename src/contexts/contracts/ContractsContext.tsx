@@ -113,7 +113,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
 
       const authwitNonce = Fr.random();
 
-      return state.contracts.amm.methods
+      const { receipt } = await state.contracts.amm.methods
         .swap_tokens_for_exact_tokens(
           state.contracts.gregoCoin.address,
           state.contracts.gregoCoinPremium.address,
@@ -122,6 +122,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
           authwitNonce,
         )
         .send({ from: currentAddress });
+      return receipt;
     },
     [wallet, currentAddress, state.contracts],
   );

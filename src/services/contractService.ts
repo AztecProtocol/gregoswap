@@ -258,7 +258,7 @@ export async function executeSwap(
   const { gregoCoin, gregoCoinPremium, amm } = contracts;
 
   const authwitNonce = Fr.random();
-  return amm.methods
+  const { receipt } = await amm.methods
     .swap_tokens_for_exact_tokens(
       gregoCoin.address,
       gregoCoinPremium.address,
@@ -267,6 +267,7 @@ export async function executeSwap(
       authwitNonce,
     )
     .send({ from: fromAddress });
+  return receipt;
 }
 
 /**
@@ -302,12 +303,13 @@ export async function executeDrip(
 ): Promise<TxReceipt> {
   const { instance: sponsoredFPCInstance } = await getSponsoredFPCData();
 
-  return pop.methods.check_password_and_mint(password, recipient).send({
+  const { receipt } = await pop.methods.check_password_and_mint(password, recipient).send({
     from: AztecAddressClass.ZERO,
     fee: {
       paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPCInstance.address),
     },
   });
+  return receipt;
 }
 
 /**

@@ -41,6 +41,7 @@ const NETWORK_URLS: Record<string, string> = {
   local: 'http://localhost:8080',
   devnet: 'https://v4-devnet-2.aztec-labs.com',
   nextnet: 'https://nextnet.aztec-labs.com',
+  testnet: 'https://rpc.testnet.aztec-labs.com',
 };
 
 const AZTEC_NODE_URL = NETWORK_URLS[NETWORK];
@@ -104,28 +105,34 @@ async function deployContracts(wallet: EmbeddedWallet, deployer: AztecAddress) {
 
   const contractAddressSalt = Fr.random();
 
-  const gregoCoin = await TokenContract.deploy(wallet, deployer, 'GregoCoin', 'GRG', 18).send({
+  const { contract: gregoCoin } = await TokenContract.deploy(wallet, deployer, 'GregoCoin', 'GRG', 18).send({
     from: deployer,
     fee: { paymentMethod },
     contractAddressSalt,
     wait: { timeout: 120 },
   });
 
-  const gregoCoinPremium = await TokenContract.deploy(wallet, deployer, 'GregoCoinPremium', 'GRGP', 18).send({
+  const { contract: gregoCoinPremium } = await TokenContract.deploy(
+    wallet,
+    deployer,
+    'GregoCoinPremium',
+    'GRGP',
+    18,
+  ).send({
     from: deployer,
     fee: { paymentMethod },
     contractAddressSalt,
     wait: { timeout: 120 },
   });
 
-  const liquidityToken = await TokenContract.deploy(wallet, deployer, 'LiquidityToken', 'LQT', 18).send({
+  const { contract: liquidityToken } = await TokenContract.deploy(wallet, deployer, 'LiquidityToken', 'LQT', 18).send({
     from: deployer,
     fee: { paymentMethod },
     contractAddressSalt,
     wait: { timeout: 120 },
   });
 
-  const amm = await AMMContract.deploy(
+  const { contract: amm } = await AMMContract.deploy(
     wallet,
     gregoCoin.address,
     gregoCoinPremium.address,
