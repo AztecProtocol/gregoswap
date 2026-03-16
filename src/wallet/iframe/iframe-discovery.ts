@@ -116,7 +116,7 @@ async function probeWallet(
   iframe.style.border = 'none';
   iframe.style.position = 'absolute';
   iframe.style.top = '-9999px';
-  iframe.allow = 'storage-access';
+  iframe.allow = 'storage-access; cross-origin-isolated';
   document.body.appendChild(iframe);
 
   return new Promise((resolve) => {
