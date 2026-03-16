@@ -12,13 +12,9 @@ import { txProgress, type PhaseTiming, type TxProgressEvent } from './tx-progres
 import type { FieldsOf } from '@aztec/foundation/types';
 import { GasSettings } from '@aztec/stdlib/gas';
 import { getSponsoredFPCData } from './services';
-import {
-  EmbeddedWallet as EmbeddedWalletBase,
-  type AccountType,
-  type EmbeddedWalletOptions,
-} from '@aztec/wallets/embedded';
+import { EmbeddedWallet as EmbeddedWalletBase, type EmbeddedWalletOptions } from '@aztec/wallets/embedded';
 import { AccountManager } from '@aztec/aztec.js/wallet';
-import { Fq, Fr } from '@aztec/foundation/curves/bn254';
+import { Fr } from '@aztec/foundation/curves/bn254';
 
 export class EmbeddedWallet extends EmbeddedWalletBase {
   private skipAuthWitExtraction = false;
@@ -28,48 +24,6 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
     options?: EmbeddedWalletOptions,
   ): Promise<T> {
     return super.create<T>(nodeOrUrl, options);
-  }
-
-  // TODO: remove this once the avoiding reregistration optimization lands on aztec-packages
-  protected override async createAccountInternal(
-    type: AccountType,
-    secret: Fr,
-    salt: Fr,
-    signingKey: Buffer,
-  ): Promise<AccountManager> {
-    let contract;
-    switch (type) {
-      case 'schnorr': {
-        contract = await this.accountContracts.getSchnorrAccountContract(Fq.fromBuffer(signingKey));
-        break;
-      }
-      case 'ecdsasecp256k1': {
-        contract = await this.accountContracts.getEcdsaKAccountContract(signingKey);
-        break;
-      }
-      case 'ecdsasecp256r1': {
-        contract = await this.accountContracts.getEcdsaRAccountContract(signingKey);
-        break;
-      }
-      default: {
-        throw new Error(`Unknown account type ${type}`);
-      }
-    }
-
-    const accountManager = await AccountManager.create(this, secret, contract, salt);
-
-    const instance = accountManager.getInstance();
-    const existingInstance = await this.pxe.getContractInstance(instance.address);
-    if (!existingInstance) {
-      const existingArtifact = await this.pxe.getContractArtifact(instance.currentContractClassId);
-      await this.registerContract(
-        instance,
-        !existingArtifact ? await accountManager.getAccountContract().getContractArtifact() : undefined,
-        accountManager.getSecretKey(),
-      );
-    }
-
-    return accountManager;
   }
 
   /**
@@ -162,7 +116,6 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
   ): Promise<SendReturn<W>> {
     const txId = crypto.randomUUID();
     const startTime = Date.now();
-    const phaseTimings: TxProgressEvent['phaseTimings'] = {};
     const phases: PhaseTiming[] = [];
 
     // Derive a human-readable label from the first meaningful call in the payload
@@ -179,7 +132,7 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
         label,
         phase,
         startTime,
-        phaseTimings: { ...phaseTimings },
+        phaseStartTime: Date.now(),
         phases: [...phases],
         ...extra,
       });
@@ -219,7 +172,6 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
         }
 
         const simulationDuration = Date.now() - simulationStart;
-        phaseTimings.simulation = simulationDuration;
 
         // Build breakdown and details from simulation stats
         const simStats = simulationResult.stats;
@@ -271,7 +223,6 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
       const provenTx = await this.pxe.proveTx(txRequest, this.scopesFor(opts.from));
 
       const provingDuration = Date.now() - provingStart;
-      phaseTimings.proving = provingDuration;
 
       // Extract detailed stats from proving result if available
       const stats = provenTx.stats;
@@ -308,7 +259,6 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
       await this.aztecNode.sendTx(tx);
 
       const sendingDuration = Date.now() - sendingStart;
-      phaseTimings.sending = sendingDuration;
       phases.push({ name: 'Sending', duration: sendingDuration, color: '#2196f3' });
 
       // NO_WAIT: return txHash immediately
@@ -325,7 +275,6 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
       const receipt = await waitForTx(this.aztecNode, txHash, waitOpts);
 
       const miningDuration = Date.now() - miningStart;
-      phaseTimings.mining = miningDuration;
       phases.push({ name: 'Mining', duration: miningDuration, color: '#4caf50' });
 
       emit('complete');

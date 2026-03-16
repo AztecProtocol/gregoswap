@@ -13,9 +13,17 @@ import {
   type PendingConnection,
   type DiscoverySession,
 } from '@aztec/wallet-sdk/manager';
+import { promiseWithResolvers } from '@aztec/foundation/promise';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import { EmbeddedWallet } from '../embedded_wallet';
 import type { NetworkConfig } from '../config/networks';
+import { discoverWebWallets } from '../wallet/iframe/iframe-discovery.ts';
+
+/**
+ * Web wallet URLs to probe during discovery.
+ * Set VITE_WEB_WALLET_URL in .env or CI to override the default dev URL.
+ */
+const WEB_WALLET_URLS: string[] = [import.meta.env.VITE_WEB_WALLET_URL ?? 'http://localhost:3001'];
 
 const APP_ID = 'gregoswap';
 
@@ -50,16 +58,106 @@ export function getChainInfo(network: NetworkConfig): ChainInfo {
 }
 
 /**
- * Starts wallet discovery process
- * Returns a DiscoverySession that yields wallets as they are discovered
+ * Starts wallet discovery process (extension + web wallets in parallel).
+ * Returns a DiscoverySession that yields providers as they are discovered.
  */
 export function discoverWallets(chainInfo: ChainInfo, timeout?: number): DiscoverySession {
-  const manager = WalletManager.configure({ extensions: { enabled: true } });
-  return manager.getAvailableWallets({
+  // Extension wallets
+  const extensionSession = WalletManager.configure({ extensions: { enabled: true } }).getAvailableWallets({
     chainInfo,
     appId: APP_ID,
     timeout,
   });
+
+  // Web wallets (probed via hidden iframe)
+  const webSession = discoverWebWallets(WEB_WALLET_URLS, chainInfo);
+
+  // Merge both sessions into one DiscoverySession
+  return mergeDiscoverySessions([extensionSession, webSession]);
+}
+
+/**
+ * Merges multiple DiscoverySessions into one.
+ * Providers from all sessions are emitted as they arrive.
+ * The merged session completes when all sub-sessions complete.
+ */
+function mergeDiscoverySessions(sessions: DiscoverySession[]): DiscoverySession {
+  const { promise: donePromise, resolve: resolveDone } = promiseWithResolvers<void>();
+
+  let cancelled = false;
+  const pending: WalletProvider[] = [];
+  let pendingResolve: ((result: IteratorResult<WalletProvider>) => void) | null = null;
+  let remaining = sessions.length;
+
+  function emit(provider: WalletProvider) {
+    if (pendingResolve) {
+      const resolve = pendingResolve;
+      pendingResolve = null;
+      resolve({ value: provider, done: false });
+    } else {
+      pending.push(provider);
+    }
+  }
+
+  function markOneDone() {
+    remaining--;
+    if (remaining === 0) {
+      resolveDone();
+      if (pendingResolve) {
+        const resolve = pendingResolve;
+        pendingResolve = null;
+        resolve({ value: undefined as any, done: true });
+      }
+    }
+  }
+
+  // Drain each session in background
+  for (const session of sessions) {
+    (async () => {
+      try {
+        for await (const provider of session.wallets) {
+          if (cancelled) break;
+          emit(provider);
+        }
+      } catch {
+        // ignore
+      } finally {
+        markOneDone();
+      }
+    })();
+  }
+
+  const wallets: AsyncIterable<WalletProvider> = {
+    [Symbol.asyncIterator]() {
+      return {
+        async next(): Promise<IteratorResult<WalletProvider>> {
+          if (remaining === 0 && pending.length === 0) {
+            return { value: undefined as any, done: true };
+          }
+          if (pending.length > 0) {
+            return { value: pending.shift()!, done: false };
+          }
+          return new Promise(resolve => {
+            pendingResolve = resolve;
+          });
+        },
+        async return() {
+          resolveDone();
+          return { value: undefined as any, done: true };
+        },
+      };
+    },
+  };
+
+  return {
+    wallets,
+    done: donePromise,
+    cancel: () => {
+      cancelled = true;
+      sessions.forEach(s => s.cancel());
+      resolveDone();
+    },
+  };
 }
 
 /**

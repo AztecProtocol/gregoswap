@@ -12,6 +12,8 @@ on:
 
 env:
   PASSWORD: ${{ secrets.PASSWORD }}
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 permissions:
   contents: read
@@ -67,13 +69,17 @@ jobs:
       - name: Pull Vercel Environment Information
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
-      - name: Deploy to Vercel
+      - name: Build and deploy to Vercel
         id: deploy
+        env:
+          VITE_WEB_WALLET_URL: ${{ vars.VITE_WEB_WALLET_URL }}
         run: |
           if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            DEPLOY_URL=$(vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes)
+            vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+            DEPLOY_URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes)
           else
-            DEPLOY_URL=$(vercel deploy --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes)
+            vercel build --token=${{ secrets.VERCEL_TOKEN }}
+            DEPLOY_URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes)
           fi
           echo "url=$DEPLOY_URL" >> $GITHUB_OUTPUT
 

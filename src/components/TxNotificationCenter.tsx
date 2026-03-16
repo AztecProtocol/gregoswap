@@ -26,6 +26,24 @@ import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import { txProgress, type TxProgressEvent, type PhaseTiming } from '../tx-progress';
 
+// ─── Live phase support ───────────────────────────────────────────────────────
+
+interface LivePhaseTiming extends PhaseTiming {
+  isLive?: boolean;
+}
+
+const ACTIVE_PHASE_COLORS: Record<string, string> = {
+  simulating: '#ce93d8',
+  proving: '#f48fb1',
+  sending: '#2196f3',
+  mining: '#4caf50',
+};
+
+const shimmer = keyframes`
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+`;
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const formatDuration = (ms: number): string => {
@@ -60,22 +78,29 @@ const pulse = keyframes`
 
 // ─── PhaseTimeline (inline, simplified from demo-wallet) ─────────────────────
 
-function PhaseTimelineBar({ phases }: { phases: PhaseTiming[] }) {
-  const totalDuration = useMemo(() => phases.reduce((sum, p) => sum + p.duration, 0), [phases]);
+function PhaseTimelineBar({ phases }: { phases: LivePhaseTiming[] }) {
+  const completedPhases = useMemo(() => phases.filter(p => !p.isLive), [phases]);
+  const livePhase = useMemo(() => phases.find(p => p.isLive), [phases]);
+
+  const completedDuration = useMemo(() => completedPhases.reduce((sum, p) => sum + p.duration, 0), [completedPhases]);
+  const liveDuration = livePhase?.duration ?? 0;
+  const totalDuration = completedDuration + liveDuration;
+
   const miningDuration = useMemo(
-    () => phases.filter(p => p.name === 'Mining').reduce((sum, p) => sum + p.duration, 0),
-    [phases],
+    () => completedPhases.filter(p => p.name === 'Mining').reduce((sum, p) => sum + p.duration, 0),
+    [completedPhases],
   );
 
   if (phases.length === 0 || totalDuration === 0) return null;
 
   const preparingDuration = totalDuration - miningDuration;
   const hasMining = miningDuration > 0;
+  const hasLive = !!livePhase;
 
   return (
     <Box sx={{ width: '100%', mt: 1.5 }}>
       {/* Summary chips */}
-      <Box sx={{ display: 'flex', gap: 0.5, mb: 0.5, flexWrap: 'wrap' }}>
+      <Box sx={{ display: 'flex', gap: 0.5, mb: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
         {hasMining ? (
           <>
             <Chip
@@ -96,7 +121,7 @@ function PhaseTimelineBar({ phases }: { phases: PhaseTiming[] }) {
           </>
         ) : (
           <Chip
-            label={`Total: ${formatDuration(totalDuration)}`}
+            label={hasLive ? `Elapsed: ${formatDuration(totalDuration)}` : `Total: ${formatDuration(totalDuration)}`}
             size="small"
             sx={{ height: 18, fontSize: '0.6rem', fontWeight: 600 }}
           />
@@ -114,7 +139,8 @@ function PhaseTimelineBar({ phases }: { phases: PhaseTiming[] }) {
           bgcolor: 'action.hover',
         }}
       >
-        {phases.map((phase, index) => {
+        {/* Completed segments (proportional width based on total) */}
+        {completedPhases.map((phase, index) => {
           const percentage = (phase.duration / totalDuration) * 100;
           return (
             <Tooltip
@@ -165,7 +191,7 @@ function PhaseTimelineBar({ phases }: { phases: PhaseTiming[] }) {
                   minWidth: percentage > 0 ? 2 : 0,
                   height: '100%',
                   bgcolor: phase.color,
-                  borderRight: index < phases.length - 1 ? '1px solid rgba(255,255,255,0.3)' : undefined,
+                  borderRight: (index < completedPhases.length - 1 || hasLive) ? '1px solid rgba(255,255,255,0.3)' : undefined,
                   transition: 'filter 0.2s ease',
                   cursor: 'pointer',
                   '&:hover': { filter: 'brightness(1.2)' },
@@ -174,15 +200,43 @@ function PhaseTimelineBar({ phases }: { phases: PhaseTiming[] }) {
             </Tooltip>
           );
         })}
+
+        {/* Live (shimmer) segment — flex: 1 to fill remaining space */}
+        {livePhase && (
+          <Tooltip
+            title={
+              <Box sx={{ p: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  {livePhase.name}
+                </Typography>
+                <Typography variant="body2">{formatDurationLong(livePhase.duration)} (in progress)</Typography>
+              </Box>
+            }
+            arrow
+            placement="top"
+          >
+            <Box
+              sx={{
+                flex: 1,
+                minWidth: 40,
+                height: '100%',
+                background: `linear-gradient(90deg, ${livePhase.color}88 0%, ${livePhase.color} 50%, ${livePhase.color}88 100%)`,
+                backgroundSize: '400px 100%',
+                animation: `${shimmer} 1.5s infinite linear`,
+                cursor: 'pointer',
+              }}
+            />
+          </Tooltip>
+        )}
       </Box>
 
       {/* Legend */}
       <Box sx={{ display: 'flex', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
         {phases.map(phase => (
           <Box key={phase.name} sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
-            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: phase.color }} />
+            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: phase.color, ...(phase.isLive && { animation: `${pulse} 1.2s ease-in-out infinite` }) }} />
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem' }}>
-              {phase.name}
+              {phase.name}{phase.isLive ? ' ●' : ''}
             </Typography>
           </Box>
         ))}
@@ -201,14 +255,16 @@ interface TxToastProps {
 function TxToast({ event, onDismiss }: TxToastProps) {
   const isActive = event.phase !== 'complete' && event.phase !== 'error';
 
-  // For completed events, compute total from recorded phase timings (stable across refreshes)
+  // For completed events, compute total from recorded phases (stable across refreshes)
   const computeFinalElapsed = () => {
-    const t = event.phaseTimings;
-    const fromTimings = (t.simulation ?? 0) + (t.proving ?? 0) + (t.sending ?? 0) + (t.mining ?? 0);
-    return fromTimings > 0 ? fromTimings : Date.now() - event.startTime;
+    const fromPhases = event.phases.reduce((sum, p) => sum + p.duration, 0);
+    return fromPhases > 0 ? fromPhases : Date.now() - event.startTime;
   };
 
+  // Total wall-clock elapsed since tx start (for header display)
   const [elapsed, setElapsed] = useState(() => isActive ? Date.now() - event.startTime : computeFinalElapsed());
+  // Live elapsed within the *current* phase (resets when phase changes)
+  const [phaseElapsed, setPhaseElapsed] = useState(() => isActive ? Date.now() - event.phaseStartTime : 0);
   const [expanded, setExpanded] = useState(true);
   const frozen = useRef(!isActive);
 
@@ -218,16 +274,43 @@ function TxToast({ event, onDismiss }: TxToastProps) {
       if (!frozen.current) {
         frozen.current = true;
         setElapsed(computeFinalElapsed());
+        setPhaseElapsed(0);
       }
       return;
     }
     frozen.current = false;
-    const interval = setInterval(() => setElapsed(Date.now() - event.startTime), 200);
+    const interval = setInterval(() => {
+      setElapsed(Date.now() - event.startTime);
+      setPhaseElapsed(Date.now() - event.phaseStartTime);
+    }, 200);
     return () => clearInterval(interval);
-  }, [isActive, event.startTime]);
+  }, [isActive, event.startTime, event.phaseStartTime]);
+
+  // Re-initialize elapsed when txId changes (new transaction)
+  const prevTxIdRef = useRef(event.txId);
+  useEffect(() => {
+    if (event.txId !== prevTxIdRef.current) {
+      prevTxIdRef.current = event.txId;
+      setElapsed(isActive ? Date.now() - event.startTime : computeFinalElapsed());
+      setPhaseElapsed(isActive ? Date.now() - event.phaseStartTime : 0);
+      frozen.current = !isActive;
+    }
+  }, [event.txId]);
 
   const isComplete = event.phase === 'complete';
   const isError = event.phase === 'error';
+
+  // Build display phases: completed phases + live shimmer phase when active
+  const displayPhases: LivePhaseTiming[] = useMemo(() => {
+    if (!isActive) return event.phases;
+    if (phaseElapsed <= 0 && event.phases.length === 0) return [];
+    const liveColor = ACTIVE_PHASE_COLORS[event.phase] ?? '#90caf9';
+    const liveName = PHASE_LABELS[event.phase] ?? event.phase;
+    return [
+      ...event.phases,
+      { name: liveName, duration: phaseElapsed > 0 ? phaseElapsed : 100, color: liveColor, isLive: true },
+    ];
+  }, [isActive, event.phases, event.phase, phaseElapsed]);
 
   return (
     <Paper
@@ -304,7 +387,7 @@ function TxToast({ event, onDismiss }: TxToastProps) {
         </Typography>
 
         {/* Expand/collapse */}
-        {isComplete && event.phases.length > 0 && (
+        {displayPhases.length > 0 && (
           <IconButton size="small" onClick={() => setExpanded(prev => !prev)} sx={{ p: 0.25 }}>
             {expanded ? <ExpandLessIcon sx={{ fontSize: 16 }} /> : <ExpandMoreIcon sx={{ fontSize: 16 }} />}
           </IconButton>
@@ -316,10 +399,10 @@ function TxToast({ event, onDismiss }: TxToastProps) {
         </IconButton>
       </Box>
 
-      {/* Phase timeline breakdown (shown when complete) */}
-      <Collapse in={isComplete && expanded && event.phases.length > 0}>
+      {/* Phase timeline breakdown (shown during execution and when complete) */}
+      <Collapse in={expanded && displayPhases.length > 0}>
         <Box sx={{ px: 1.5, pb: 1.5 }}>
-          <PhaseTimelineBar phases={event.phases} />
+          <PhaseTimelineBar phases={displayPhases} />
         </Box>
       </Collapse>
 
