@@ -9,6 +9,12 @@ on:
       - main
       - next
   workflow_dispatch:
+    inputs:
+      production:
+        description: 'Deploy to production'
+        required: false
+        default: true
+        type: boolean
 
 env:
   PASSWORD: ${{ secrets.PASSWORD }}
@@ -74,7 +80,7 @@ jobs:
         env:
           VITE_WEB_WALLET_URL: ${{ vars.VITE_WEB_WALLET_URL }}
         run: |
-          if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" ]; then
+          if ([ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" ]) || ([ "${{ github.event_name }}" == "workflow_dispatch" ] && [ "${{ inputs.production }}" == "true" ]); then
             vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
             DEPLOY_URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --yes)
           else
