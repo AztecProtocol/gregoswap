@@ -2,8 +2,15 @@ import { AztecAddress } from '@aztec/stdlib/aztec-address';
 import { collectOffchainEffects, type ExecutionPayload } from '@aztec/stdlib/tx';
 import { AccountFeePaymentMethodOptions } from '@aztec/entrypoints/account';
 import type { AztecNode } from '@aztec/aztec.js/node';
-import { type InteractionWaitOptions, NO_WAIT, type SendReturn, extractOffchainOutput } from '@aztec/aztec.js/contracts';
+import {
+  type InteractionWaitOptions,
+  NO_WAIT,
+  type SendReturn,
+  extractOffchainOutput,
+  getGasLimits,
+} from '@aztec/aztec.js/contracts';
 import { waitForTx } from '@aztec/aztec.js/node';
+import { NO_FROM, type NoFrom } from '@aztec/aztec.js/account';
 import type { SendOptions } from '@aztec/aztec.js/wallet';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { CallAuthorizationRequest } from '@aztec/aztec.js/authorization';
@@ -13,12 +20,10 @@ import type { FieldsOf } from '@aztec/foundation/types';
 import { GasSettings } from '@aztec/stdlib/gas';
 import { getSponsoredFPCData } from './services';
 import { EmbeddedWallet as EmbeddedWalletBase, type EmbeddedWalletOptions } from '@aztec/wallets/embedded';
-import { AccountManager } from '@aztec/aztec.js/wallet';
+import { AccountManager, ContractInitializationStatus } from '@aztec/aztec.js/wallet';
 import { Fr } from '@aztec/foundation/curves/bn254';
 
 export class EmbeddedWallet extends EmbeddedWalletBase {
-  private skipAuthWitExtraction = false;
-
   static override create<T extends EmbeddedWalletBase = EmbeddedWallet>(
     nodeOrUrl: string | AztecNode,
     options?: EmbeddedWalletOptions,
@@ -46,7 +51,7 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
       return false;
     }
     const metadata = await this.getContractMetadata(account.item);
-    return metadata.isContractInitialized;
+    return metadata.initializationStatus === ContractInitializationStatus.INITIALIZED;
   }
 
   async deployAccount() {
@@ -59,17 +64,13 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
     }
 
     const deployMethod = await accountManager.getDeployMethod();
-    this.skipAuthWitExtraction = true;
-    try {
-      return await deployMethod.send({
-        from: AztecAddress.ZERO,
-        fee: {
-          paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPCInstance.address),
-        },
-      });
-    } finally {
-      this.skipAuthWitExtraction = false;
-    }
+
+    return await deployMethod.send({
+      from: AztecAddress.ZERO,
+      fee: {
+        paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPCInstance.address),
+      },
+    });
   }
 
   /**
@@ -80,7 +81,7 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
    * @returns - Complete fee options that can be used to create a transaction execution request
    */
   protected override async completeFeeOptions(
-    from: AztecAddress,
+    from: AztecAddress | NoFrom,
     feePayer?: AztecAddress,
     gasSettings?: Partial<FieldsOf<GasSettings>>,
   ): Promise<FeeOptions> {
@@ -90,16 +91,18 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
     let walletFeePaymentMethod;
     // The transaction does not include a fee payment method, so we
     // use the sponsoredFPC
-    if (!feePayer) {
-      accountFeePaymentMethodOptions = AccountFeePaymentMethodOptions.EXTERNAL;
-      const { instance } = await getSponsoredFPCData();
-      walletFeePaymentMethod = new SponsoredFeePaymentMethod(instance.address);
-    } else {
-      // The transaction includes fee payment method, so we check if we are the fee payer for it
-      // (this can only happen if the embedded payment method is FeeJuiceWithClaim)
-      accountFeePaymentMethodOptions = from.equals(feePayer)
-        ? AccountFeePaymentMethodOptions.FEE_JUICE_WITH_CLAIM
-        : AccountFeePaymentMethodOptions.EXTERNAL;
+    if (from !== NO_FROM) {
+      if (!feePayer) {
+        accountFeePaymentMethodOptions = AccountFeePaymentMethodOptions.EXTERNAL;
+        const { instance } = await getSponsoredFPCData();
+        walletFeePaymentMethod = new SponsoredFeePaymentMethod(instance.address);
+      } else {
+        // The transaction includes fee payment method, so we check if we are the fee payer for it
+        // (this can only happen if the embedded payment method is FeeJuiceWithClaim)
+        accountFeePaymentMethodOptions = from.equals(feePayer)
+          ? AccountFeePaymentMethodOptions.FEE_JUICE_WITH_CLAIM
+          : AccountFeePaymentMethodOptions.EXTERNAL;
+      }
     }
     const fullGasSettings: GasSettings = GasSettings.default({ ...gasSettings, maxFeesPerGas });
     this.log.debug(`Using L2 gas settings`, fullGasSettings);
@@ -139,92 +142,97 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
     };
 
     try {
-      const feeOptions = await this.completeFeeOptions(opts.from, executionPayload.feePayer, opts.fee?.gasSettings);
-      if (!this.skipAuthWitExtraction) {
-        emit('simulating');
-        const simulationStart = Date.now();
+      const feeOptions = await this.completeFeeOptionsForEstimation(
+        opts.from,
+        executionPayload.feePayer,
+        opts.fee?.gasSettings,
+      );
 
-        const simulationResult = await this.simulateViaEntrypoint(
-          executionPayload,
-          opts.from,
-          feeOptions,
-          this.scopesFor(opts.from),
-          true,
-          true,
-        );
-
-        const offchainEffects = collectOffchainEffects(simulationResult.privateExecutionResult);
-        const authWitnesses = await Promise.all(
-          offchainEffects.map(async effect => {
-            try {
-              const authRequest = await CallAuthorizationRequest.fromFields(effect.data);
-              return this.createAuthWit(opts.from, {
-                consumer: effect.contractAddress,
-                innerHash: authRequest.innerHash,
-              });
-            } catch {
-              return undefined; // Not a CallAuthorizationRequest, skip
-            }
-          }),
-        );
-        for (const wit of authWitnesses) {
-          if (wit) executionPayload.authWitnesses.push(wit);
-        }
-
-        const simulationDuration = Date.now() - simulationStart;
-
-        // Build breakdown and details from simulation stats
-        const simStats = simulationResult.stats;
-        const breakdown: Array<{ label: string; duration: number }> = [];
-        const details: string[] = [];
-
-        if (simStats?.timings) {
-          const t = simStats.timings;
-          if (t.sync > 0) breakdown.push({ label: 'Sync', duration: t.sync });
-          if (t.perFunction.length > 0) {
-            const witgenTotal = t.perFunction.reduce((sum, fn) => sum + fn.time, 0);
-            breakdown.push({ label: 'Private execution', duration: witgenTotal });
-            for (const fn of t.perFunction) {
-              breakdown.push({ label: `  ${fn.functionName.split(':').pop() || fn.functionName}`, duration: fn.time });
-            }
+      emit('simulating');
+      const simulationStart = Date.now();
+      const simulationResult = await this.simulateViaEntrypoint(executionPayload, {
+        from: opts.from,
+        feeOptions,
+        scopes: this.scopesFrom(opts.from),
+        skipFeeEnforcement: true,
+        skipTxValidation: true,
+      });
+      const offchainEffects = collectOffchainEffects(simulationResult.privateExecutionResult);
+      const authWitnesses = await Promise.all(
+        offchainEffects.map(async effect => {
+          try {
+            const authRequest = await CallAuthorizationRequest.fromFields(effect.data);
+            return this.createAuthWit(authRequest.onBehalfOf, {
+              consumer: effect.contractAddress,
+              innerHash: authRequest.innerHash,
+            });
+          } catch {
+            return undefined;
           }
-          if (t.publicSimulation) breakdown.push({ label: 'Public simulation', duration: t.publicSimulation });
-          if (t.unaccounted > 0) breakdown.push({ label: 'Other', duration: t.unaccounted });
-        }
-
-        if (simStats?.nodeRPCCalls?.roundTrips) {
-          const rt = simStats.nodeRPCCalls.roundTrips;
-          const fmt = (ms: number) => (ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`);
-          details.push(`${rt.roundTrips} RPC round-trips (${fmt(rt.totalBlockingTime)} blocking)`);
-          const MAX_METHODS_SHOWN = 3;
-          for (let i = 0; i < rt.roundTripDurations.length; i++) {
-            const allMethods = rt.roundTripMethods[i] ?? [];
-            const count = allMethods.length;
-            const shown = allMethods.slice(0, MAX_METHODS_SHOWN).join(', ');
-            const suffix = count > MAX_METHODS_SHOWN ? `, ... +${count - MAX_METHODS_SHOWN} more` : '';
-            details.push(`  #${i + 1}: ${fmt(rt.roundTripDurations[i])} — ${shown}${suffix} (${count} calls)`);
-          }
-        }
-
-        phases.push({
-          name: 'Simulation',
-          duration: simulationDuration,
-          color: '#ce93d8',
-          ...(breakdown.length > 0 && { breakdown }),
-          ...(details.length > 0 && { details }),
-        });
+        }),
+      );
+      for (const wit of authWitnesses) {
+        if (wit) executionPayload.authWitnesses.push(wit);
       }
+      const simulationDuration = Date.now() - simulationStart;
+      const simStats = simulationResult.stats;
+      const breakdown: Array<{ label: string; duration: number }> = [];
+      const details: string[] = [];
+      if (simStats?.timings) {
+        const t = simStats.timings;
+        if (t.sync > 0) breakdown.push({ label: 'Sync', duration: t.sync });
+        if (t.perFunction.length > 0) {
+          const witgenTotal = t.perFunction.reduce((sum, fn) => sum + fn.time, 0);
+          breakdown.push({
+            label: 'Private execution',
+            duration: witgenTotal,
+          });
+          for (const fn of t.perFunction) {
+            breakdown.push({
+              label: `  ${fn.functionName.split(':').pop() || fn.functionName}`,
+              duration: fn.time,
+            });
+          }
+        }
+        if (t.publicSimulation)
+          breakdown.push({
+            label: 'Public simulation',
+            duration: t.publicSimulation,
+          });
+        if (t.unaccounted > 0) breakdown.push({ label: 'Other', duration: t.unaccounted });
+      }
+      if (simStats?.nodeRPCCalls?.roundTrips) {
+        const rt = simStats.nodeRPCCalls.roundTrips;
+        const fmt = (ms: number) => (ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`);
+        details.push(`${rt.roundTrips} RPC round-trips (${fmt(rt.totalBlockingTime)} blocking)`);
+      }
+      phases.push({
+        name: 'Simulation',
+        duration: simulationDuration,
+        color: '#ce93d8',
+        ...(breakdown.length > 0 && { breakdown }),
+        ...(details.length > 0 && { details }),
+      });
 
-      // --- PROVING ---
       emit('proving');
       const provingStart = Date.now();
-
-      const txRequest = await this.createTxExecutionRequestFromPayloadAndFee(executionPayload, opts.from, feeOptions);
-      const provenTx = await this.pxe.proveTx(txRequest, this.scopesFor(opts.from));
-
+      const estimated = getGasLimits(simulationResult, this.estimatedGasPadding);
+      this.log.verbose(
+        `Estimated gas limits for tx: DA=${estimated.gasLimits.daGas} L2=${estimated.gasLimits.l2Gas} teardownDA=${estimated.teardownGasLimits.daGas} teardownL2=${estimated.teardownGasLimits.l2Gas}`,
+      );
+      const gasSettings = GasSettings.from({
+        ...opts.fee?.gasSettings,
+        maxFeesPerGas: feeOptions.gasSettings.maxFeesPerGas,
+        maxPriorityFeesPerGas: feeOptions.gasSettings.maxPriorityFeesPerGas,
+        gasLimits: opts.fee?.gasSettings?.gasLimits ?? estimated.gasLimits,
+        teardownGasLimits: opts.fee?.gasSettings?.teardownGasLimits ?? estimated.teardownGasLimits,
+      });
+      const txRequest = await this.createTxExecutionRequestFromPayloadAndFee(executionPayload, opts.from, {
+        ...feeOptions,
+        gasSettings,
+      });
+      const provenTx = await this.pxe.proveTx(txRequest, this.scopesFrom(opts.from));
       const provingDuration = Date.now() - provingStart;
-
-      // Extract detailed stats from proving result if available
       const stats = provenTx.stats;
       if (stats?.timings) {
         const t = stats.timings;
@@ -241,47 +249,66 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
             })),
           });
         }
-        if (t.proving && t.proving > 0) phases.push({ name: 'Proving', duration: t.proving, color: '#f48fb1' });
-        if (t.unaccounted > 0) phases.push({ name: 'Other', duration: t.unaccounted, color: '#bdbdbd' });
+        if (t.proving && t.proving > 0)
+          phases.push({
+            name: 'Proving',
+            duration: t.proving,
+            color: '#f48fb1',
+          });
+        if (t.unaccounted > 0)
+          phases.push({
+            name: 'Other',
+            duration: t.unaccounted,
+            color: '#bdbdbd',
+          });
       } else {
-        phases.push({ name: 'Proving', duration: provingDuration, color: '#f48fb1' });
+        phases.push({
+          name: 'Proving',
+          duration: provingDuration,
+          color: '#f48fb1',
+        });
       }
 
-      // --- SENDING ---
-      emit('sending');
-      const sendingStart = Date.now();
+      const offchainOutput = extractOffchainOutput(
+        provenTx.getOffchainEffects(),
+        provenTx.publicInputs.constants.anchorBlockHeader.globalVariables.timestamp,
+      );
 
-      const offchainOutput = extractOffchainOutput(provenTx.getOffchainEffects());
       const tx = await provenTx.toTx();
       const txHash = tx.getTxHash();
+      emit('sending');
+      const sendingStart = Date.now();
       if (await this.aztecNode.getTxEffect(txHash)) {
         throw new Error(`A settled tx with equal hash ${txHash.toString()} exists.`);
       }
       await this.aztecNode.sendTx(tx);
+      phases.push({
+        name: 'Sending',
+        duration: Date.now() - sendingStart,
+        color: '#2196f3',
+      });
 
-      const sendingDuration = Date.now() - sendingStart;
-      phases.push({ name: 'Sending', duration: sendingDuration, color: '#2196f3' });
-
-      // NO_WAIT: return txHash immediately
       if (opts.wait === NO_WAIT) {
         emit('complete');
-        return { txHash, ...offchainOutput } as SendReturn<W>;
+        return { txHash, ...offchainOutput } as unknown as SendReturn<W>;
       }
 
-      // --- MINING ---
       emit('mining');
       const miningStart = Date.now();
-
       const waitOpts = typeof opts.wait === 'object' ? opts.wait : undefined;
       const receipt = await waitForTx(this.aztecNode, txHash, waitOpts);
-
-      const miningDuration = Date.now() - miningStart;
-      phases.push({ name: 'Mining', duration: miningDuration, color: '#4caf50' });
+      phases.push({
+        name: 'Mining',
+        duration: Date.now() - miningStart,
+        color: '#4caf50',
+      });
 
       emit('complete');
-      return { receipt, ...offchainOutput } as SendReturn<W>;
+      return { receipt, ...offchainOutput } as unknown as SendReturn<W>;
     } catch (err) {
-      emit('error', { error: err instanceof Error ? err.message : 'Transaction failed' });
+      emit('error', {
+        error: err instanceof Error ? err.message : 'Transaction failed',
+      });
       throw err;
     }
   }

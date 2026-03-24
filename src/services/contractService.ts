@@ -190,7 +190,9 @@ export async function getExchangeRate(
     gregoCoinPremium.methods.balance_of_public(amm.address),
   ]);
 
-  const [token0Reserve, token1Reserve] = await batchCall.simulate({ from: fromAddress });
+  const {
+    result: [token0Reserve, token1Reserve],
+  } = await batchCall.simulate({ from: fromAddress });
   return parseFloat(new BigDecimal(token1Reserve).divide(new BigDecimal(token0Reserve)).toString());
 }
 
@@ -209,7 +211,9 @@ export async function fetchBalances(
     gregoCoinPremium.methods.balance_of_private(address),
   ]);
 
-  const [gcBalance, gcpBalance] = await batchCall.simulate({ from: address });
+  const {
+    result: [gcBalance, gcpBalance],
+  } = await batchCall.simulate({ from: address });
   return [gcBalance, gcpBalance];
 }
 
@@ -234,7 +238,9 @@ export async function simulateOnboardingQueries(
     gregoCoinPremium.methods.balance_of_private(address),
   ]);
 
-  const [token0Reserve, token1Reserve, gcBalance, gcpBalance] = await batchCall.simulate({ from: address });
+  const {
+    result: [token0Reserve, token1Reserve, gcBalance, gcpBalance],
+  } = await batchCall.simulate({ from: address });
   const exchangeRate = parseFloat(new BigDecimal(token1Reserve).divide(new BigDecimal(token0Reserve)).toString());
 
   return {
