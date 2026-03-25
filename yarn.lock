@@ -95,8 +95,8 @@ __metadata:
   linkType: hard
 
 "@aws-sdk/client-s3@npm:^3.892.0":
-  version: 3.1015.0
-  resolution: "@aws-sdk/client-s3@npm:3.1015.0"
+  version: 3.1016.0
+  resolution: "@aws-sdk/client-s3@npm:3.1016.0"
   dependencies:
     "@aws-crypto/sha1-browser": "npm:5.2.0"
     "@aws-crypto/sha256-browser": "npm:5.2.0"
@@ -153,7 +153,7 @@ __metadata:
     "@smithy/util-utf8": "npm:^4.2.2"
     "@smithy/util-waiter": "npm:^4.2.13"
     tslib: "npm:^2.6.2"
-  checksum: 10c0/cf4d4e2ad344dc724bf68083319f8daa8b8284f0c008bbecc4041ad1d4406b2acd56476ffa106fc5599035c8b2aedbf8a25d1637af12a13b704fd0c7d0113a0a
+  checksum: 10c0/728d527021b2c6b77376ae3243428a14751bbd3e5b430399e9714f21383c1024e7dc23ec0823fd6f595a6cfa352c648c81a36f31d7203faf97eaf83541421f8a
   languageName: node
   linkType: hard
 
@@ -4284,11 +4284,11 @@ __metadata:
   linkType: hard
 
 "brace-expansion@npm:^5.0.2":
-  version: 5.0.4
-  resolution: "brace-expansion@npm:5.0.4"
+  version: 5.0.5
+  resolution: "brace-expansion@npm:5.0.5"
   dependencies:
     balanced-match: "npm:^4.0.2"
-  checksum: 10c0/359cbcfa80b2eb914ca1f3440e92313fbfe7919ee6b274c35db55bec555aded69dac5ee78f102cec90c35f98c20fa43d10936d0cd9978158823c249257e1643a
+  checksum: 10c0/4d238e14ed4f5cc9c07285550a41cef23121ca08ba99fa9eb5b55b580dcb6bf868b8210aa10526bdc9f8dc97f33ca2a7259039c4cc131a93042beddb424c48e3
   languageName: node
   linkType: hard
 

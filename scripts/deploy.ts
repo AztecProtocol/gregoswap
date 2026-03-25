@@ -15,8 +15,8 @@ import { Fr } from '@aztec/foundation/curves/bn254';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 
 import { ProofOfPasswordContract } from '../contracts/target/ProofOfPassword.ts';
-import { createLogger } from '@aztec/foundation/log';
 import { BatchCall } from '@aztec/aztec.js/contracts';
+import { NO_FROM } from '@aztec/aztec.js/account';
 
 // Parse network from CLI args (--network <name>)
 function getNetworkFromArgs(): string {
@@ -82,7 +82,7 @@ async function createAccount(wallet: EmbeddedWallet) {
   const sponsoredPFCContract = await getSponsoredPFCContract();
   const paymentMethod = new SponsoredFeePaymentMethod(sponsoredPFCContract.address);
   const deployOpts = {
-    from: AztecAddress.ZERO,
+    from: NO_FROM,
     fee: {
       paymentMethod,
     },

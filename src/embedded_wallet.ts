@@ -66,7 +66,7 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
     const deployMethod = await accountManager.getDeployMethod();
 
     return await deployMethod.send({
-      from: AztecAddress.ZERO,
+      from: NO_FROM,
       fee: {
         paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPCInstance.address),
       },
@@ -124,7 +124,8 @@ export class EmbeddedWallet extends EmbeddedWalletBase {
     // Derive a human-readable label from the first meaningful call in the payload
     // Skip fee payment methods (e.g. sponsor_unconditionally) to find the actual user call
     const meaningfulCall =
-      executionPayload.calls?.find(c => c.name !== 'sponsor_unconditionally') ?? executionPayload.calls?.[0];
+      executionPayload.calls?.find(c => c.name !== 'sponsor_unconditionally' && c.name !== 'entrypoint') ??
+      executionPayload.calls?.[0];
     const fnName = meaningfulCall?.name ?? 'Transaction';
     const label =
       fnName === 'constructor' ? 'Deploy' : fnName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());

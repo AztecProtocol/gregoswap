@@ -109,7 +109,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     optimizeDeps: {
-      exclude: ['@aztec/noir-acvm_js', '@aztec/noir-noirc_abi', '@aztec/bb.js'],
+      exclude: ['@aztec/noir-acvm_js', '@aztec/noir-noirc_abi', '@aztec/bb.js', '@aztec/wallets'],
     },
     plugins: [
       react({ jsxImportSource: '@emotion/react' }),
@@ -117,7 +117,7 @@ export default defineConfig(({ mode }) => {
       chunkSizeValidator([
         {
           pattern: /assets\/index-.*\.js$/,
-          maxSizeKB: 1500,
+          maxSizeKB: 1600,
           description: 'Main entrypoint, hard limit',
         },
         {

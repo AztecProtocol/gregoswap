@@ -11,13 +11,15 @@ import { Fr } from '@aztec/aztec.js/fields';
 import { BatchCall, getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { SPONSORED_FPC_SALT } from '@aztec/constants';
-import type { TxReceipt } from '@aztec/stdlib/tx';
+import { mergeExecutionPayloads, type TxReceipt } from '@aztec/stdlib/tx';
 import type { TokenContract } from '@aztec/noir-contracts.js/Token';
 import type { AMMContract } from '@aztec/noir-contracts.js/AMM';
 import type { ProofOfPasswordContract } from '../../contracts/target/ProofOfPassword';
 import { BigDecimal } from '../utils/bigDecimal';
 import type { NetworkConfig } from '../config/networks';
 import type { OnboardingResult } from '../contexts/onboarding/reducer';
+import { NO_FROM } from '@aztec/aztec.js/account';
+import { DefaultMultiCallEntrypoint } from '@aztec/entrypoints/multicall';
 
 /**
  * Contracts returned after swap registration
@@ -190,9 +192,9 @@ export async function getExchangeRate(
     gregoCoinPremium.methods.balance_of_public(amm.address),
   ]);
 
-  const {
-    result: [token0Reserve, token1Reserve],
-  } = await batchCall.simulate({ from: fromAddress });
+  const results = await batchCall.simulate({ from: fromAddress });
+  const token0Reserve = results[0].result;
+  const token1Reserve = results[1].result;
   return parseFloat(new BigDecimal(token1Reserve).divide(new BigDecimal(token0Reserve)).toString());
 }
 
@@ -211,10 +213,8 @@ export async function fetchBalances(
     gregoCoinPremium.methods.balance_of_private(address),
   ]);
 
-  const {
-    result: [gcBalance, gcpBalance],
-  } = await batchCall.simulate({ from: address });
-  return [gcBalance, gcpBalance];
+  const results = await batchCall.simulate({ from: address });
+  return [results[0].result, results[1].result];
 }
 
 /**
@@ -238,9 +238,8 @@ export async function simulateOnboardingQueries(
     gregoCoinPremium.methods.balance_of_private(address),
   ]);
 
-  const {
-    result: [token0Reserve, token1Reserve, gcBalance, gcpBalance],
-  } = await batchCall.simulate({ from: address });
+  const results = await batchCall.simulate({ from: address });
+  const [token0Reserve, token1Reserve, gcBalance, gcpBalance] = results.map(r => r.result);
   const exchangeRate = parseFloat(new BigDecimal(token1Reserve).divide(new BigDecimal(token0Reserve)).toString());
 
   return {
@@ -303,17 +302,23 @@ export function parseSwapError(error: unknown): string {
  * Executes a drip (token claim) transaction
  */
 export async function executeDrip(
+  wallet: Wallet,
   pop: ProofOfPasswordContract,
   password: string,
   recipient: AztecAddress,
 ): Promise<TxReceipt> {
   const { instance: sponsoredFPCInstance } = await getSponsoredFPCData();
 
-  const { receipt } = await pop.methods.check_password_and_mint(password, recipient).send({
-    from: AztecAddressClass.ZERO,
-    fee: {
-      paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPCInstance.address),
-    },
+  const multicall = new DefaultMultiCallEntrypoint();
+  const chainInfo = await wallet.getChainInfo();
+  const executionPayloads = [
+    await new SponsoredFeePaymentMethod(sponsoredFPCInstance.address).getExecutionPayload(),
+    await pop.methods.check_password_and_mint(password, recipient).request(),
+  ];
+  const executionPayload = await multicall.wrapExecutionPayload(mergeExecutionPayloads(executionPayloads), chainInfo);
+  const { receipt } = await wallet.sendTx(executionPayload, {
+    from: NO_FROM,
+    wait: {},
   });
   return receipt;
 }

@@ -83,7 +83,13 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
 
   // Get exchange rate
   const getExchangeRate = useCallback(async (): Promise<number> => {
-    if (!wallet || !currentAddress || !state.contracts.amm || !state.contracts.gregoCoin || !state.contracts.gregoCoinPremium) {
+    if (
+      !wallet ||
+      !currentAddress ||
+      !state.contracts.amm ||
+      !state.contracts.gregoCoin ||
+      !state.contracts.gregoCoinPremium
+    ) {
       throw new Error('Contracts not initialized');
     }
 
@@ -172,13 +178,13 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
   // Execute drip
   const drip = useCallback(
     async (password: string, recipient: AztecAddress): Promise<TxReceipt> => {
-      if (!state.contracts.pop) {
+      if (!wallet || !state.contracts.pop) {
         throw new Error('ProofOfPassword contract not initialized');
       }
 
-      return contractService.executeDrip(state.contracts.pop, password, recipient);
+      return contractService.executeDrip(wallet, state.contracts.pop, password, recipient);
     },
-    [state.contracts.pop],
+    [wallet, state.contracts.pop],
   );
 
   // Initialize contracts for embedded wallet
