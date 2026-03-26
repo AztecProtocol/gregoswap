@@ -17,6 +17,7 @@ import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { ProofOfPasswordContract } from '../contracts/target/ProofOfPassword.ts';
 import { BatchCall } from '@aztec/aztec.js/contracts';
 import { NO_FROM } from '@aztec/aztec.js/account';
+import { ContractInitializationStatus } from '@aztec/aztec.js/wallet';
 
 // Parse network from CLI args (--network <name>)
 function getNetworkFromArgs(): string {
@@ -27,14 +28,16 @@ function getNetworkFromArgs(): string {
     process.exit(1);
   }
   const network = args[networkIndex + 1];
-  if (!['local', 'devnet', 'nextnet'].includes(network)) {
-    console.error(`Invalid network: ${network}. Must be 'local', 'devnet' or 'nextnet'`);
+  if (!['local', 'devnet', 'nextnet', 'testnet'].includes(network)) {
+    console.error(`Invalid network: ${network}. Must be 'local', 'devnet', 'nextnet' or 'testnet'`);
     process.exit(1);
   }
   return network;
 }
 
 const NETWORK = getNetworkFromArgs();
+const sponsoredPFCContract = await getSponsoredPFCContract();
+const paymentMethod = NETWORK !== 'testnet' ? new SponsoredFeePaymentMethod(sponsoredPFCContract.address) : undefined;
 
 // Network-specific node URLs (hardcoded, not configurable)
 const NETWORK_URLS: Record<string, string> = {
@@ -73,24 +76,26 @@ async function getSponsoredPFCContract() {
 }
 
 async function createAccount(wallet: EmbeddedWallet) {
-  const salt = Fr.random();
-  const secretKey = Fr.random();
+  const salt = new Fr(0);
+  const secretKey = process.env.SECRET ? Fr.fromString(process.env.SECRET) : await Fr.random();
   const signingKey = deriveSigningKey(secretKey);
   const accountManager = await wallet.createSchnorrAccount(secretKey, salt, signingKey);
 
-  const deployMethod = await accountManager.getDeployMethod();
-  const sponsoredPFCContract = await getSponsoredPFCContract();
-  const paymentMethod = new SponsoredFeePaymentMethod(sponsoredPFCContract.address);
-  const deployOpts = {
-    from: NO_FROM,
-    fee: {
-      paymentMethod,
-    },
-    skipClassPublication: true,
-    skipInstancePublication: true,
-    wait: { timeout: 120 },
-  };
-  await deployMethod.send(deployOpts);
+  const { initializationStatus } = await wallet.getContractMetadata(accountManager.address);
+
+  if (initializationStatus !== ContractInitializationStatus.INITIALIZED) {
+    const deployMethod = await accountManager.getDeployMethod();
+    const deployOpts = {
+      from: NO_FROM,
+      fee: {
+        paymentMethod,
+      },
+      skipClassPublication: true,
+      skipInstancePublication: true,
+      wait: { timeout: 120 },
+    };
+    await deployMethod.send(deployOpts);
+  }
 
   return {
     address: accountManager.address,
@@ -101,7 +106,6 @@ async function createAccount(wallet: EmbeddedWallet) {
 
 async function deployContracts(wallet: EmbeddedWallet, deployer: AztecAddress) {
   const sponsoredPFCContract = await getSponsoredPFCContract();
-  const paymentMethod = new SponsoredFeePaymentMethod(sponsoredPFCContract.address);
 
   const contractAddressSalt = Fr.random();
 
