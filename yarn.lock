@@ -1773,6 +1773,21 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@gregojuice/embedded-wallet@npm:^0.0.1":
+  version: 0.0.1
+  resolution: "@gregojuice/embedded-wallet@npm:0.0.1"
+  dependencies:
+    "@aztec/aztec.js": "npm:v4.2.0-nightly.20260324"
+    "@aztec/entrypoints": "npm:v4.2.0-nightly.20260324"
+    "@aztec/foundation": "npm:v4.2.0-nightly.20260324"
+    "@aztec/pxe": "npm:v4.2.0-nightly.20260324"
+    "@aztec/stdlib": "npm:v4.2.0-nightly.20260324"
+    "@aztec/wallet-sdk": "npm:v4.2.0-nightly.20260324"
+    "@aztec/wallets": "npm:v4.2.0-nightly.20260324"
+  checksum: 10c0/b68a43e2e21585f886ae3c65a2b5010c007c21d5521eae7cc7e673b3f28fe648cfa301aefbf2d68af7c2af0c3df42e0bd79a5b0f4f12d0e230241d78715af9ae
+  languageName: node
+  linkType: hard
+
 "@hapi/bourne@npm:^3.0.0":
   version: 3.0.0
   resolution: "@hapi/bourne@npm:3.0.0"
@@ -6058,6 +6073,7 @@ __metadata:
     "@emotion/react": "npm:^11.14.0"
     "@emotion/styled": "npm:^11.14.0"
     "@eslint/js": "npm:^9.18.0"
+    "@gregojuice/embedded-wallet": "npm:^0.0.1"
     "@mui/icons-material": "npm:^6.3.1"
     "@mui/material": "npm:^6.3.1"
     "@mui/styles": "npm:^6.3.1"

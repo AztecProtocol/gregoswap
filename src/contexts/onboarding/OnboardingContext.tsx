@@ -21,8 +21,6 @@ import {
   type DripPhase,
 } from './reducer';
 import { parseDripError } from '../../services/contractService';
-import { deployEmbeddedAccount } from '../../services/walletService';
-import { EmbeddedWallet } from '../../embedded_wallet';
 
 export type { OnboardingStatus, OnboardingStep };
 export { ONBOARDING_STEPS, ONBOARDING_STEPS_WITH_DRIP, getOnboardingSteps, getOnboardingStepsWithDrip };
@@ -133,7 +131,7 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
           await registerBaseContracts();
         }
 
-        // Step 1b: After embedded wallet selection, deploy account if needed
+        // Step 1b: Initializerless accounts don't need deployment — skip straight to registration
         if (
           state.status === 'deploying_account' &&
           currentAddress &&
@@ -142,8 +140,6 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
           !state.hasDeployedAccount
         ) {
           actions.markDeployedAccount();
-          await deployEmbeddedAccount(wallet as EmbeddedWallet);
-          // After deployment, proceed to register contracts
           actions.markRegistered();
           actions.advanceStatus('registering');
           await registerBaseContracts();

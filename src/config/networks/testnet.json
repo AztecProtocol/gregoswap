@@ -15,5 +15,14 @@
   "deployer": {
     "address": "0x03c81e9b0a3db1d9ab96686b3df7095c71ba40aaa81dd2bce51e43721ac3a957"
   },
-  "deployedAt": "2026-03-25T22:26:56.276Z"
+  "deployedAt": "2026-03-25T22:26:56.276Z",
+  "subscriptionFPC": {
+    "address": "0x0371bf46981ba52e0f4c5c74ee902a9e45de71222c88b1cc03558f17b356d7dc",
+    "secretKey": "0x1183f02e5db2e5547c11a88d321cdd64648a58c888fe24ff8ed8169508f50456",
+    "functions": {
+      "0x1f3d19fd7ff194abafb5dcd01bca08119fbb12bc9dab9a5d98a54828faa6b4bf": {
+        "0xa539bd29": 0
+      }
+    }
+  }
 }

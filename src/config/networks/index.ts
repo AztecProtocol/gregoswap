@@ -1,3 +1,12 @@
+export interface SubscriptionFPCConfig {
+  /** Address of the SubscriptionFPC contract */
+  address: string;
+  /** Secret key for registering the FPC in PXE (needed to decrypt slot notes) */
+  secretKey: string;
+  /** Map of contractAddress → { functionSelector → configIndex } */
+  functions: Record<string, Record<string, number>>;
+}
+
 export interface NetworkConfig {
   id: string;
   nodeUrl: string;
@@ -16,6 +25,8 @@ export interface NetworkConfig {
     address: string;
   };
   deployedAt: string;
+  /** Subscription-based FPC for sponsored transactions (operator-managed) */
+  subscriptionFPC?: SubscriptionFPCConfig;
 }
 
 // Load all network configs using Vite's glob import with eager loading

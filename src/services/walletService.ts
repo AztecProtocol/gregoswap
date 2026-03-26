@@ -14,7 +14,7 @@ import {
   type DiscoverySession,
 } from '@aztec/wallet-sdk/manager';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
-import { EmbeddedWallet } from '../embedded_wallet';
+import { EmbeddedWallet } from '@gregojuice/embedded-wallet';
 import type { NetworkConfig } from '../config/networks';
 
 /**
@@ -34,14 +34,17 @@ export function createNodeClient(nodeUrl: string): AztecNode {
 
 /**
  * Creates an embedded wallet and ensures it has an account.
- * Uses the wallet's internal DB for persistence — same address is restored on reload.
- * Returns the wallet and the account address.
+ * Uses initializerless Schnorr accounts — no on-chain deployment needed.
+ * The wallet's internal DB persists the account, so the same address is restored on reload.
  */
 export async function createEmbeddedWallet(
   node: AztecNode,
 ): Promise<{ wallet: EmbeddedWallet; address: AztecAddress }> {
   const wallet = await EmbeddedWallet.create(node, { pxeConfig: { proverEnabled: true } });
-  const accountManager = await wallet.getOrCreateAccount();
+  let accountManager = await wallet.loadStoredAccount();
+  if (!accountManager) {
+    accountManager = await wallet.createInitializerlessAccount();
+  }
   return { wallet, address: accountManager.address };
 }
 
@@ -102,12 +105,3 @@ export async function disconnectProvider(provider: WalletProvider): Promise<void
   }
 }
 
-/**
- * Deploys the embedded wallet's account on-chain. Skips if already deployed.
- */
-export async function deployEmbeddedAccount(wallet: EmbeddedWallet): Promise<void> {
-  if (await wallet.isAccountDeployed()) {
-    return;
-  }
-  await wallet.deployAccount();
-}
