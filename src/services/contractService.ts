@@ -9,17 +9,19 @@ import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { AztecAddress as AztecAddressClass } from '@aztec/aztec.js/addresses';
 import { Fr } from '@aztec/aztec.js/fields';
 import { BatchCall, getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
-import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
-import { SPONSORED_FPC_SALT } from '@aztec/constants';
-import { mergeExecutionPayloads, type TxReceipt } from '@aztec/stdlib/tx';
+import type { TxReceipt } from '@aztec/stdlib/tx';
 import type { TokenContract } from '@aztec/noir-contracts.js/Token';
-import type { AMMContract } from '@aztec/noir-contracts.js/AMM';
+import type { AMMContract } from '../../contracts/target/AMM';
 import type { ProofOfPasswordContract } from '../../contracts/target/ProofOfPassword';
 import { BigDecimal } from '../utils/bigDecimal';
 import type { NetworkConfig } from '../config/networks';
 import type { OnboardingResult } from '../contexts/onboarding/reducer';
 import { NO_FROM } from '@aztec/aztec.js/account';
-import { DefaultMultiCallEntrypoint } from '@aztec/entrypoints/multicall';
+import {
+  SubscriptionFPCContract,
+  SubscriptionFPCContractArtifact,
+} from '@gregojuice/contracts/artifacts/SubscriptionFPC';
+import { SubscriptionFPC } from '@gregojuice/contracts/subscription-fpc';
 
 /**
  * Contracts returned after swap registration
@@ -35,17 +37,6 @@ export interface SwapContracts {
  */
 export interface DripContracts {
   pop: ProofOfPasswordContract;
-}
-
-/**
- * Helper function to get SponsoredFPC contract data
- */
-export async function getSponsoredFPCData() {
-  const { SponsoredFPCContractArtifact } = await import('@aztec/noir-contracts.js/SponsoredFPC');
-  const sponsoredFPCInstance = await getContractInstanceFromInstantiationParams(SponsoredFPCContractArtifact, {
-    salt: new Fr(SPONSORED_FPC_SALT),
-  });
-  return { artifact: SponsoredFPCContractArtifact, instance: sponsoredFPCInstance };
 }
 
 /**
@@ -67,7 +58,7 @@ export async function registerSwapContracts(
 
   // Import contract artifacts
   const { TokenContract, TokenContractArtifact } = await import('@aztec/noir-contracts.js/Token');
-  const { AMMContract, AMMContractArtifact } = await import('@aztec/noir-contracts.js/AMM');
+  const { AMMContract, AMMContractArtifact } = await import('../../contracts/target/AMM');
 
   // Check which contracts are already registered
   const [ammMetadata, gregoCoinMetadata, gregoCoinPremiumMetadata] = await wallet.batch([
@@ -144,13 +135,19 @@ export async function registerDripContracts(
     '../../contracts/target/ProofOfPassword'
   );
 
-  const { instance: sponsoredFPCInstance, artifact: SponsoredFPCContractArtifact } = await getSponsoredFPCData();
+  // Determine which FPC to use: subscription FPC (preferred) or fallback to Aztec's sponsored FPC
+  const subFPC = network.subscriptionFPC;
 
   // Check which contracts are already registered
-  const [popMetadata, sponsoredFPCMetadata] = await wallet.batch([
+  const metadataChecks: { name: 'getContractMetadata'; args: [AztecAddress] }[] = [
     { name: 'getContractMetadata', args: [popAddress] },
-    { name: 'getContractMetadata', args: [sponsoredFPCInstance.address] },
-  ]);
+  ];
+  if (subFPC) {
+    metadataChecks.push({ name: 'getContractMetadata', args: [AztecAddressClass.fromString(subFPC.address)] });
+  }
+
+  const metadataResults = await wallet.batch(metadataChecks);
+  const popMetadata = metadataResults[0];
 
   // Build registration batch for unregistered contracts only
   const registrationBatch: { name: 'registerContract'; args: [any, any, any] }[] = [];
@@ -159,10 +156,22 @@ export async function registerDripContracts(
     const instance = await node.getContract(popAddress);
     registrationBatch.push({ name: 'registerContract', args: [instance, ProofOfPasswordContractArtifact, undefined] });
   }
-  if (!sponsoredFPCMetadata.result.instance) {
+
+  // Register subscription FPC if configured and not yet registered
+  if (!subFPC) {
+    throw new Error('No subscriptionFPC configured for this network');
+  }
+  const subFPCMetadata = metadataResults[1];
+  if (!subFPCMetadata.result.instance) {
+    const fpcAddress = AztecAddressClass.fromString(subFPC.address);
+    const secretKey = Fr.fromString(subFPC.secretKey);
+    const instance = await node.getContract(fpcAddress);
+    if (!instance) {
+      throw new Error(`Subscription FPC at ${subFPC.address} not found on-chain`);
+    }
     registrationBatch.push({
       name: 'registerContract',
-      args: [sponsoredFPCInstance, SponsoredFPCContractArtifact, undefined],
+      args: [instance, SubscriptionFPCContractArtifact, secretKey],
     });
   }
 
@@ -275,6 +284,93 @@ export async function executeSwap(
   return receipt;
 }
 
+// ── Subscription state tracking ─────────────────────────────────────
+
+const SUBSCRIPTION_KEY = 'gregoswap_subscriptions';
+
+function hasSubscription(userAddress: string, contractAddress: string, selector: string): boolean {
+  try {
+    const subs = JSON.parse(localStorage.getItem(SUBSCRIPTION_KEY) ?? '{}');
+    return !!subs[`${userAddress}:${contractAddress}:${selector}`];
+  } catch { return false; }
+}
+
+function markSubscribed(userAddress: string, contractAddress: string, selector: string) {
+  try {
+    const subs = JSON.parse(localStorage.getItem(SUBSCRIPTION_KEY) ?? '{}');
+    subs[`${userAddress}:${contractAddress}:${selector}`] = true;
+    localStorage.setItem(SUBSCRIPTION_KEY, JSON.stringify(subs));
+  } catch { /* ignore */ }
+}
+
+/**
+ * Executes a sponsored swap through the SubscriptionFPC.
+ * Uses subscribe on first call, sponsor on subsequent calls.
+ */
+export async function executeSponsoredSwap(
+  wallet: Wallet,
+  network: NetworkConfig,
+  amm: SwapContracts['amm'],
+  gregoCoin: SwapContracts['gregoCoin'],
+  gregoCoinPremium: SwapContracts['gregoCoinPremium'],
+  userAddress: AztecAddress,
+  amountOut: number,
+  amountInMax: number,
+): Promise<TxReceipt> {
+  const subFPC = network.subscriptionFPC;
+  if (!subFPC) {
+    throw new Error('No subscriptionFPC configured for this network');
+  }
+
+  const authwitNonce = Fr.random();
+  const call = await amm.methods
+    .swap_tokens_for_exact_tokens_from(
+      userAddress,
+      gregoCoin.address,
+      gregoCoinPremium.address,
+      BigInt(Math.round(amountOut)),
+      BigInt(Math.round(amountInMax)),
+      authwitNonce,
+    )
+    .getFunctionCall();
+
+  const configIndex = subFPC.functions[amm.address.toString()]?.[call.selector.toString()];
+  if (configIndex == null) {
+    throw new Error(`No subscription config found for AMM ${amm.address.toString()} selector ${call.selector.toString()}`);
+  }
+
+  const fpcAddress = AztecAddressClass.fromString(subFPC.address);
+  const rawFPC = SubscriptionFPCContract.at(fpcAddress, wallet);
+  const fpc = new SubscriptionFPC(rawFPC);
+
+  const subscribed = hasSubscription(
+    userAddress.toString(),
+    amm.address.toString(),
+    call.selector.toString(),
+  );
+
+  if (subscribed) {
+    const { receipt } = await fpc.helpers.sponsor({
+      call,
+      configIndex,
+      userAddress,
+    });
+    return receipt;
+  } else {
+    const { receipt } = await fpc.helpers.subscribe({
+      call,
+      configIndex,
+      userAddress,
+    });
+    markSubscribed(
+      userAddress.toString(),
+      amm.address.toString(),
+      call.selector.toString(),
+    );
+    return receipt;
+  }
+}
+
 /**
  * Parses a swap error into a user-friendly message
  */
@@ -299,26 +395,38 @@ export function parseSwapError(error: unknown): string {
 }
 
 /**
- * Executes a drip (token claim) transaction
+ * Executes a drip (token claim) transaction.
+ * Uses subscription FPC when configured, falls back to Aztec's sponsored FPC.
  */
 export async function executeDrip(
   wallet: Wallet,
+  network: NetworkConfig,
   pop: ProofOfPasswordContract,
   password: string,
   recipient: AztecAddress,
 ): Promise<TxReceipt> {
-  const { instance: sponsoredFPCInstance } = await getSponsoredFPCData();
+  const subFPC = network.subscriptionFPC;
+  if (!subFPC) {
+    throw new Error('No subscriptionFPC configured for this network');
+  }
 
-  const multicall = new DefaultMultiCallEntrypoint();
-  const chainInfo = await wallet.getChainInfo();
-  const executionPayloads = [
-    await new SponsoredFeePaymentMethod(sponsoredFPCInstance.address).getExecutionPayload(),
-    await pop.methods.check_password_and_mint(password, recipient).request(),
-  ];
-  const executionPayload = await multicall.wrapExecutionPayload(mergeExecutionPayloads(executionPayloads), chainInfo);
-  const { receipt } = await wallet.sendTx(executionPayload, {
-    from: NO_FROM,
-    wait: {},
+  const call = await pop.methods.check_password_and_mint(password, recipient).getFunctionCall();
+  const configIndex = subFPC.functions[pop.address.toString()]?.[call.selector.toString()];
+  if (configIndex == null) {
+    throw new Error(`No subscription config found for ${pop.address.toString()} selector ${call.selector.toString()}`);
+  }
+
+  const fpcAddress = AztecAddressClass.fromString(subFPC.address);
+  const rawFPC = SubscriptionFPCContract.at(fpcAddress, wallet);
+  const fpc = new SubscriptionFPC(rawFPC);
+
+  const accounts = await wallet.getAccounts();
+  const userAddress = accounts[0]?.item ?? recipient;
+
+  const { receipt } = await fpc.helpers.subscribe({
+    call,
+    configIndex,
+    userAddress,
   });
   return receipt;
 }

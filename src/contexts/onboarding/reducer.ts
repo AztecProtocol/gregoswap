@@ -12,7 +12,6 @@ import { createReducerHook, type ActionsFrom } from '../utils';
 export type OnboardingStatus =
   | 'idle'
   | 'connecting'
-  | 'deploying_account'
   | 'registering'
   | 'simulating'
   | 'registering_drip'
@@ -45,7 +44,6 @@ export interface OnboardingState {
   error: string | null;
   hasRegisteredBase: boolean;
   hasSimulated: boolean;
-  hasDeployedAccount: boolean;
   needsDrip: boolean;
   dripPhase: DripPhase;
   dripError: string | null;
@@ -64,7 +62,6 @@ export const initialOnboardingState: OnboardingState = {
   error: null,
   hasRegisteredBase: false,
   hasSimulated: false,
-  hasDeployedAccount: false,
   needsDrip: false,
   dripPhase: 'idle',
   dripError: null,
@@ -83,7 +80,6 @@ export const onboardingActions = {
   setPassword: (password: string) => ({ type: 'onboarding/SET_PASSWORD' as const, password }),
   markRegistered: () => ({ type: 'onboarding/MARK_REGISTERED' as const }),
   markSimulated: () => ({ type: 'onboarding/MARK_SIMULATED' as const }),
-  markDeployedAccount: () => ({ type: 'onboarding/MARK_DEPLOYED_ACCOUNT' as const }),
   markNeedsDrip: () => ({ type: 'onboarding/MARK_NEEDS_DRIP' as const }),
   selectEmbeddedWallet: () => ({ type: 'onboarding/SELECT_EMBEDDED_WALLET' as const }),
   setSimulationGrant: (granted: boolean) => ({ type: 'onboarding/SET_SIMULATION_GRANT' as const, granted }),
@@ -134,14 +130,11 @@ export function onboardingReducer(state: OnboardingState, action: OnboardingActi
     case 'onboarding/MARK_SIMULATED':
       return { ...state, hasSimulated: true };
 
-    case 'onboarding/MARK_DEPLOYED_ACCOUNT':
-      return { ...state, hasDeployedAccount: true };
-
     case 'onboarding/MARK_NEEDS_DRIP':
       return { ...state, needsDrip: true, pendingSwap: false };
 
     case 'onboarding/SELECT_EMBEDDED_WALLET':
-      return { ...state, useEmbeddedWallet: true, status: 'deploying_account' };
+      return { ...state, useEmbeddedWallet: true, status: 'registering' };
 
     case 'onboarding/SET_SIMULATION_GRANT':
       return { ...state, hasSimulationGrant: action.granted };
@@ -189,20 +182,17 @@ export function calculateCurrentStep(status: OnboardingStatus, needsDrip: boolea
       case 'idle':
         return 0;
       case 'connecting':
-        return 1;
-      case 'deploying_account':
-        return 2;
       case 'registering':
-        return 3;
+        return 1;
       case 'simulating':
-        return 4;
+        return needsDrip ? 1 : 2;
       case 'registering_drip':
-        return 4;
+        return 2;
       case 'awaiting_drip':
       case 'executing_drip':
-        return 5;
+        return 3;
       case 'completed':
-        return needsDrip ? 6 : 5;
+        return needsDrip ? 4 : 3;
       default:
         return 0;
     }
@@ -234,10 +224,6 @@ export function getOnboardingSteps(hasSimulationGrant: boolean, useEmbeddedWalle
     { label: 'Choose Wallet', description: 'Select how you want to connect' },
   ];
 
-  if (useEmbeddedWallet) {
-    steps.push({ label: 'Deploy Account', description: 'Deploying your account on-chain' });
-  }
-
   steps.push({ label: 'Register Contracts', description: 'Registering any missing contracts' });
 
   if (useEmbeddedWallet || hasSimulationGrant) {
@@ -253,10 +239,6 @@ export function getOnboardingStepsWithDrip(hasSimulationGrant: boolean, useEmbed
   const steps: OnboardingStep[] = [
     { label: 'Choose Wallet', description: 'Select how you want to connect' },
   ];
-
-  if (useEmbeddedWallet) {
-    steps.push({ label: 'Deploy Account', description: 'Deploying your account on-chain' });
-  }
 
   steps.push(
     { label: 'Register Contracts', description: 'Registering any missing contracts' },

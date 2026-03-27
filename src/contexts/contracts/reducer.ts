@@ -4,7 +4,7 @@
  */
 
 import type { TokenContract } from '@aztec/noir-contracts.js/Token';
-import type { AMMContract } from '@aztec/noir-contracts.js/AMM';
+import type { AMMContract } from '../../../contracts/target/AMM';
 import type { ProofOfPasswordContract } from '../../../contracts/target/ProofOfPassword';
 import { createReducerHook, type ActionsFrom } from '../utils';
 

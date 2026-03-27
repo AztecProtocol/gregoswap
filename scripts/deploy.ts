@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { TokenContract } from '@aztec/noir-contracts.js/Token';
-import { AMMContract } from '@aztec/noir-contracts.js/AMM';
+import { AMMContract } from '../contracts/target/AMM.ts';
 import { deriveSigningKey } from '@aztec/stdlib/keys';
 import { AztecAddress } from '@aztec/stdlib/aztec-address';
 import { createAztecNodeClient, type AztecNode } from '@aztec/aztec.js/node';
@@ -19,12 +19,12 @@ import { BatchCall } from '@aztec/aztec.js/contracts';
 import { NO_FROM } from '@aztec/aztec.js/account';
 import { ContractInitializationStatus } from '@aztec/aztec.js/wallet';
 
-// Parse network from CLI args (--network <name>)
-function getNetworkFromArgs(): string {
+// Parse CLI args
+function getCliArgs(): { network: string; mintTo: string[] } {
   const args = process.argv.slice(2);
   const networkIndex = args.indexOf('--network');
   if (networkIndex === -1 || networkIndex === args.length - 1) {
-    console.error('Usage: node deploy.ts --network <local|devnet|nextnet>');
+    console.error('Usage: node deploy.ts --network <local|devnet|nextnet|testnet> [--mint-to <address> ...]');
     process.exit(1);
   }
   const network = args[networkIndex + 1];
@@ -32,10 +32,27 @@ function getNetworkFromArgs(): string {
     console.error(`Invalid network: ${network}. Must be 'local', 'devnet', 'nextnet' or 'testnet'`);
     process.exit(1);
   }
-  return network;
+
+  // Collect --mint-to addresses from CLI args and/or MINT_TO env var
+  const mintTo: string[] = [];
+  let i = 0;
+  while (i < args.length) {
+    if (args[i] === '--mint-to' && i + 1 < args.length) {
+      mintTo.push(args[i + 1]);
+      i += 2;
+    } else {
+      i++;
+    }
+  }
+  // Also accept comma-separated addresses via MINT_TO env var
+  if (process.env.MINT_TO) {
+    mintTo.push(...process.env.MINT_TO.split(',').map(s => s.trim()).filter(Boolean));
+  }
+
+  return { network, mintTo };
 }
 
-const NETWORK = getNetworkFromArgs();
+const { network: NETWORK, mintTo: MINT_TO_ADDRESSES } = getCliArgs();
 const sponsoredPFCContract = await getSponsoredPFCContract();
 const paymentMethod = NETWORK !== 'testnet' ? new SponsoredFeePaymentMethod(sponsoredPFCContract.address) : undefined;
 
@@ -143,10 +160,20 @@ async function deployContracts(wallet: EmbeddedWallet, deployer: AztecAddress) {
     liquidityToken.address,
   ).send({ from: deployer, fee: { paymentMethod }, contractAddressSalt, wait: { timeout: 120 } });
 
+  const extraMints = MINT_TO_ADDRESSES.flatMap(addr => {
+    const recipient = AztecAddress.fromString(addr);
+    console.log(`Will mint ${INITIAL_TOKEN_BALANCE} GregoCoin + GregoCoinPremium to ${addr}`);
+    return [
+      gregoCoin.methods.mint_to_private(recipient, INITIAL_TOKEN_BALANCE),
+      gregoCoinPremium.methods.mint_to_private(recipient, INITIAL_TOKEN_BALANCE),
+    ];
+  });
+
   await new BatchCall(wallet, [
     liquidityToken.methods.set_minter(amm.address, true),
     gregoCoin.methods.mint_to_private(deployer, INITIAL_TOKEN_BALANCE),
     gregoCoinPremium.methods.mint_to_private(deployer, INITIAL_TOKEN_BALANCE),
+    ...extraMints,
   ]).send({ from: deployer, fee: { paymentMethod }, wait: { timeout: 120 } });
 
   const nonceForAuthwits = Fr.random();

@@ -131,17 +131,14 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
           await registerBaseContracts();
         }
 
-        // Step 1b: Initializerless accounts don't need deployment — skip straight to registration
+        // Step 1b: For embedded wallet, register contracts when entering 'registering' status
         if (
-          state.status === 'deploying_account' &&
+          state.status === 'registering' &&
           currentAddress &&
-          wallet &&
-          node &&
-          !state.hasDeployedAccount
+          isUsingEmbeddedWallet &&
+          !state.hasRegisteredBase
         ) {
-          actions.markDeployedAccount();
           actions.markRegistered();
-          actions.advanceStatus('registering');
           await registerBaseContracts();
         }
 
@@ -185,7 +182,6 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     state.status,
     state.hasRegisteredBase,
     state.hasSimulated,
-    state.hasDeployedAccount,
     state.useEmbeddedWallet,
     currentAddress,
     isUsingEmbeddedWallet,
