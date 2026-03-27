@@ -107,7 +107,7 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     ? getOnboardingStepsWithDrip(state.hasSimulationGrant, state.useEmbeddedWallet)
     : getOnboardingSteps(state.hasSimulationGrant, state.useEmbeddedWallet);
   const currentStep = calculateCurrentStep(state.status, state.needsDrip, state.useEmbeddedWallet);
-  const baseSteps = state.useEmbeddedWallet ? 5 : 4;
+  const baseSteps = steps.length;
   const totalSteps = state.needsDrip ? baseSteps + 1 : baseSteps;
   const isSwapPending = state.status === 'completed' && state.pendingSwap;
   const isDripPending = state.status === 'executing_drip' && state.dripPassword !== null;

@@ -178,21 +178,21 @@ export function onboardingReducer(state: OnboardingState, action: OnboardingActi
 
 export function calculateCurrentStep(status: OnboardingStatus, needsDrip: boolean, useEmbeddedWallet: boolean): number {
   if (useEmbeddedWallet) {
+    // Steps are 1-indexed to match OnboardingProgress (stepNum = index + 1)
     switch (status) {
       case 'idle':
         return 0;
       case 'connecting':
       case 'registering':
-        return 1;
       case 'simulating':
-        return needsDrip ? 1 : 2;
-      case 'registering_drip':
         return 2;
+      case 'registering_drip':
+        return 3;
       case 'awaiting_drip':
       case 'executing_drip':
-        return 3;
+        return 4;
       case 'completed':
-        return needsDrip ? 4 : 3;
+        return needsDrip ? 5 : 4;
       default:
         return 0;
     }
