@@ -16,11 +16,6 @@ import type { ProofOfPasswordContract } from '../../contracts/target/ProofOfPass
 import { BigDecimal } from '../utils/bigDecimal';
 import type { NetworkConfig } from '../config/networks';
 import type { OnboardingResult } from '../contexts/onboarding/reducer';
-import {
-  SubscriptionFPCContract,
-  SubscriptionFPCContractArtifact,
-} from '@gregojuice/contracts/artifacts/SubscriptionFPC';
-import { SubscriptionFPC } from '@gregojuice/contracts/subscription-fpc';
 
 /**
  * Contracts returned after swap registration
@@ -168,6 +163,7 @@ export async function registerDripContracts(
     if (!instance) {
       throw new Error(`Subscription FPC at ${subFPC.address} not found on-chain`);
     }
+    const { SubscriptionFPCContractArtifact } = await import('@gregojuice/contracts/artifacts/SubscriptionFPC');
     registrationBatch.push({
       name: 'registerContract',
       args: [instance, SubscriptionFPCContractArtifact, secretKey],
@@ -349,6 +345,8 @@ export async function executeSponsoredSwap(
   }
 
   const fpcAddress = AztecAddressClass.fromString(subFPC.address);
+  const { SubscriptionFPCContract } = await import('@gregojuice/contracts/artifacts/SubscriptionFPC');
+  const { SubscriptionFPC } = await import('@gregojuice/contracts/subscription-fpc');
   const rawFPC = SubscriptionFPCContract.at(fpcAddress, wallet);
   const fpc = new SubscriptionFPC(rawFPC);
 
@@ -418,6 +416,8 @@ export async function executeDrip(
   }
 
   const fpcAddress = AztecAddressClass.fromString(subFPC.address);
+  const { SubscriptionFPCContract } = await import('@gregojuice/contracts/artifacts/SubscriptionFPC');
+  const { SubscriptionFPC } = await import('@gregojuice/contracts/subscription-fpc');
   const rawFPC = SubscriptionFPCContract.at(fpcAddress, wallet);
   const fpc = new SubscriptionFPC(rawFPC);
 
