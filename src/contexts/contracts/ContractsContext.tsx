@@ -6,7 +6,6 @@
 import { createContext, useContext, useEffect, type ReactNode, useCallback } from 'react';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { TxReceipt } from '@aztec/stdlib/tx';
-import { Fr } from '@aztec/aztec.js/fields';
 import { useWallet } from '../wallet';
 import { useNetwork } from '../network';
 import * as contractService from '../../services/contractService';
@@ -83,7 +82,13 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
 
   // Get exchange rate
   const getExchangeRate = useCallback(async (): Promise<number> => {
-    if (!wallet || !currentAddress || !state.contracts.amm || !state.contracts.gregoCoin || !state.contracts.gregoCoinPremium) {
+    if (
+      !wallet ||
+      !currentAddress ||
+      !state.contracts.amm ||
+      !state.contracts.gregoCoin ||
+      !state.contracts.gregoCoinPremium
+    ) {
       throw new Error('Contracts not initialized');
     }
 
@@ -111,19 +116,18 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         throw new Error('Contracts not initialized');
       }
 
-      const authwitNonce = Fr.random();
-
-      return state.contracts.amm.methods
-        .swap_tokens_for_exact_tokens(
-          state.contracts.gregoCoin.address,
-          state.contracts.gregoCoinPremium.address,
-          BigInt(Math.round(amountOut)),
-          BigInt(Math.round(amountInMax)),
-          authwitNonce,
-        )
-        .send({ from: currentAddress });
+      return contractService.executeSponsoredSwap(
+        wallet,
+        activeNetwork,
+        state.contracts.amm,
+        state.contracts.gregoCoin,
+        state.contracts.gregoCoinPremium,
+        currentAddress,
+        amountOut,
+        amountInMax,
+      );
     },
-    [wallet, currentAddress, state.contracts],
+    [wallet, currentAddress, activeNetwork, state.contracts],
   );
 
   // Fetch balances
@@ -171,13 +175,13 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
   // Execute drip
   const drip = useCallback(
     async (password: string, recipient: AztecAddress): Promise<TxReceipt> => {
-      if (!state.contracts.pop) {
+      if (!wallet || !node || !state.contracts.pop) {
         throw new Error('ProofOfPassword contract not initialized');
       }
 
-      return contractService.executeDrip(state.contracts.pop, password, recipient);
+      return contractService.executeDrip(wallet, activeNetwork, state.contracts.pop, password, recipient);
     },
-    [state.contracts.pop],
+    [wallet, activeNetwork, state.contracts.pop],
   );
 
   // Initialize contracts for embedded wallet

@@ -1,141 +1,90 @@
-import { SPONSORED_FPC_SALT } from '@aztec/constants';
-import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
-import { getPXEConfig } from '@aztec/pxe/server';
-import { EmbeddedWallet } from '@aztec/wallets/embedded';
 import fs from 'fs';
 import path from 'path';
 
 import { TokenContract } from '@aztec/noir-contracts.js/Token';
-import { AMMContract } from '@aztec/noir-contracts.js/AMM';
-import { deriveSigningKey } from '@aztec/stdlib/keys';
+import { AMMContract } from '../contracts/target/AMM.ts';
 import { AztecAddress } from '@aztec/stdlib/aztec-address';
-import { createAztecNodeClient, type AztecNode } from '@aztec/aztec.js/node';
-import { getContractInstanceFromInstantiationParams } from '@aztec/stdlib/contract';
 import { Fr } from '@aztec/foundation/curves/bn254';
-import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
+import type { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
+import type { EmbeddedWallet } from '@aztec/wallets/embedded';
 
 import { ProofOfPasswordContract } from '../contracts/target/ProofOfPassword.ts';
-import { createLogger } from '@aztec/foundation/log';
 import { BatchCall } from '@aztec/aztec.js/contracts';
 
-// Parse network from CLI args (--network <name>)
-function getNetworkFromArgs(): string {
-  const args = process.argv.slice(2);
-  const networkIndex = args.indexOf('--network');
-  if (networkIndex === -1 || networkIndex === args.length - 1) {
-    console.error('Usage: node deploy.ts --network <local|devnet|nextnet>');
-    process.exit(1);
-  }
-  const network = args[networkIndex + 1];
-  if (!['local', 'devnet', 'nextnet'].includes(network)) {
-    console.error(`Invalid network: ${network}. Must be 'local', 'devnet' or 'nextnet'`);
-    process.exit(1);
-  }
-  return network;
-}
+import {
+  parseNetwork,
+  parseAddressList,
+  NETWORK_URLS,
+  setupWallet,
+  getOrCreateDeployer,
+} from './utils.ts';
 
-const NETWORK = getNetworkFromArgs();
-
-// Network-specific node URLs (hardcoded, not configurable)
-const NETWORK_URLS: Record<string, string> = {
-  local: 'http://localhost:8080',
-  devnet: 'https://v4-devnet-2.aztec-labs.com',
-  nextnet: 'https://nextnet.aztec-labs.com',
-};
-
+const NETWORK = parseNetwork();
+const MINT_TO_ADDRESSES = parseAddressList('--mint-to', 'MINT_TO');
 const AZTEC_NODE_URL = NETWORK_URLS[NETWORK];
-const PROVER_ENABLED = NETWORK !== 'local'; // Disable prover for local to speed up deployment
 
-const PASSWORD = process.env.PASSWORD ? process.env.PASSWORD : undefined;
-
+const PASSWORD = process.env.PASSWORD;
 if (!PASSWORD) {
   throw new Error('Please specify a PASSWORD');
 }
 
-const PXE_STORE_DIR = path.join(import.meta.dirname, '.pxe-store');
-
 const INITIAL_TOKEN_BALANCE = 1_000_000_000n;
 
-async function setupWallet(aztecNode: AztecNode) {
-  return await EmbeddedWallet.create(aztecNode, {
-    ephemeral: true,
-    pxeConfig: { ...getPXEConfig(), proverEnabled: PROVER_ENABLED },
-  });
-}
-
-async function getSponsoredPFCContract() {
-  const instance = await getContractInstanceFromInstantiationParams(SponsoredFPCContractArtifact, {
-    salt: new Fr(SPONSORED_FPC_SALT),
-  });
-
-  return instance;
-}
-
-async function createAccount(wallet: EmbeddedWallet) {
-  const salt = Fr.random();
-  const secretKey = Fr.random();
-  const signingKey = deriveSigningKey(secretKey);
-  const accountManager = await wallet.createSchnorrAccount(secretKey, salt, signingKey);
-
-  const deployMethod = await accountManager.getDeployMethod();
-  const sponsoredPFCContract = await getSponsoredPFCContract();
-  const paymentMethod = new SponsoredFeePaymentMethod(sponsoredPFCContract.address);
-  const deployOpts = {
-    from: AztecAddress.ZERO,
-    fee: {
-      paymentMethod,
-    },
-    skipClassPublication: true,
-    skipInstancePublication: true,
-    wait: { timeout: 120 },
-  };
-  await deployMethod.send(deployOpts);
-
-  return {
-    address: accountManager.address,
-    salt,
-    secretKey,
-  };
-}
-
-async function deployContracts(wallet: EmbeddedWallet, deployer: AztecAddress) {
-  const sponsoredPFCContract = await getSponsoredPFCContract();
-  const paymentMethod = new SponsoredFeePaymentMethod(sponsoredPFCContract.address);
-
+async function deployContracts(
+  wallet: EmbeddedWallet,
+  deployer: AztecAddress,
+  paymentMethod?: SponsoredFeePaymentMethod,
+) {
   const contractAddressSalt = Fr.random();
 
-  const gregoCoin = await TokenContract.deploy(wallet, deployer, 'GregoCoin', 'GRG', 18).send({
+  const { contract: gregoCoin } = await TokenContract.deploy(wallet, deployer, 'GregoCoin', 'GRG', 18).send({
     from: deployer,
     fee: { paymentMethod },
     contractAddressSalt,
     wait: { timeout: 120 },
   });
 
-  const gregoCoinPremium = await TokenContract.deploy(wallet, deployer, 'GregoCoinPremium', 'GRGP', 18).send({
+  const { contract: gregoCoinPremium } = await TokenContract.deploy(
+    wallet,
+    deployer,
+    'GregoCoinPremium',
+    'GRGP',
+    18,
+  ).send({
     from: deployer,
     fee: { paymentMethod },
     contractAddressSalt,
     wait: { timeout: 120 },
   });
 
-  const liquidityToken = await TokenContract.deploy(wallet, deployer, 'LiquidityToken', 'LQT', 18).send({
+  const { contract: liquidityToken } = await TokenContract.deploy(wallet, deployer, 'LiquidityToken', 'LQT', 18).send({
     from: deployer,
     fee: { paymentMethod },
     contractAddressSalt,
     wait: { timeout: 120 },
   });
 
-  const amm = await AMMContract.deploy(
+  const { contract: amm } = await AMMContract.deploy(
     wallet,
     gregoCoin.address,
     gregoCoinPremium.address,
     liquidityToken.address,
   ).send({ from: deployer, fee: { paymentMethod }, contractAddressSalt, wait: { timeout: 120 } });
 
+  const extraMints = MINT_TO_ADDRESSES.flatMap(addr => {
+    const recipient = AztecAddress.fromString(addr);
+    console.log(`Will mint ${INITIAL_TOKEN_BALANCE} GregoCoin + GregoCoinPremium to ${addr}`);
+    return [
+      gregoCoin.methods.mint_to_private(recipient, INITIAL_TOKEN_BALANCE),
+      gregoCoinPremium.methods.mint_to_private(recipient, INITIAL_TOKEN_BALANCE),
+    ];
+  });
+
   await new BatchCall(wallet, [
     liquidityToken.methods.set_minter(amm.address, true),
     gregoCoin.methods.mint_to_private(deployer, INITIAL_TOKEN_BALANCE),
     gregoCoinPremium.methods.mint_to_private(deployer, INITIAL_TOKEN_BALANCE),
+    ...extraMints,
   ]).send({ from: deployer, fee: { paymentMethod }, wait: { timeout: 120 } });
 
   const nonceForAuthwits = Fr.random();
@@ -199,12 +148,11 @@ async function deployContracts(wallet: EmbeddedWallet, deployer: AztecAddress) {
     liquidityTokenAddress: liquidityToken.address.toString(),
     ammAddress: amm.address.toString(),
     popAddress: pop.address.toString(),
-    sponsoredFPCAddress: sponsoredPFCContract.address,
     contractAddressSalt: contractAddressSalt.toString(),
   };
 }
 
-async function writeNetworkConfig(network: string, deploymentInfo: any) {
+async function writeNetworkConfig(network: string, deploymentInfo: any, sponsoredFPCAddress: string) {
   const configDir = path.join(import.meta.dirname, '../src/config/networks');
   fs.mkdirSync(configDir, { recursive: true });
 
@@ -220,7 +168,7 @@ async function writeNetworkConfig(network: string, deploymentInfo: any) {
       amm: deploymentInfo.ammAddress,
       liquidityToken: deploymentInfo.liquidityTokenAddress,
       pop: deploymentInfo.popAddress,
-      sponsoredFPC: deploymentInfo.sponsoredFPCAddress,
+      sponsoredFPC: sponsoredFPCAddress,
       salt: deploymentInfo.contractAddressSalt,
     },
     deployer: {
@@ -248,20 +196,14 @@ async function writeNetworkConfig(network: string, deploymentInfo: any) {
     `);
 }
 
-async function createAccountAndDeployContract() {
-  const aztecNode = createAztecNodeClient(AZTEC_NODE_URL);
-  const wallet = await setupWallet(aztecNode);
+async function main() {
+  const { node, wallet, paymentMethod, sponsoredFPC } = await setupWallet(AZTEC_NODE_URL, NETWORK);
 
-  const { rollupVersion, l1ChainId: chainId } = await aztecNode.getNodeInfo();
+  const { rollupVersion, l1ChainId: chainId } = await node.getNodeInfo();
 
-  // Register the SponsoredFPC contract (for sponsored fee payments)
-  await wallet.registerContract(await getSponsoredPFCContract(), SponsoredFPCContractArtifact);
+  const deployer = await getOrCreateDeployer(wallet, paymentMethod);
 
-  // Create a new account
-  const { address: deployer } = await createAccount(wallet);
-
-  // Deploy the contract
-  const contractDeploymentInfo = await deployContracts(wallet, deployer);
+  const contractDeploymentInfo = await deployContracts(wallet, deployer, paymentMethod);
   const deploymentInfo = {
     ...contractDeploymentInfo,
     chainId: chainId.toString(),
@@ -269,17 +211,12 @@ async function createAccountAndDeployContract() {
     deployerAddress: deployer.toString(),
   };
 
-  // Save the network config to src/config/networks/
-  await writeNetworkConfig(NETWORK, deploymentInfo);
+  await writeNetworkConfig(NETWORK, deploymentInfo, sponsoredFPC.address.toString());
 
-  // Clean up the PXE store
-  fs.rmSync(PXE_STORE_DIR, { recursive: true, force: true });
   process.exit(0);
 }
 
-createAccountAndDeployContract().catch(error => {
+main().catch(error => {
   console.error(error);
   process.exit(1);
 });
-
-export { createAccountAndDeployContract };

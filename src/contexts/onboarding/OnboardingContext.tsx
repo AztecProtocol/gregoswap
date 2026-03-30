@@ -21,8 +21,6 @@ import {
   type DripPhase,
 } from './reducer';
 import { parseDripError } from '../../services/contractService';
-import { deployEmbeddedAccount } from '../../services/walletService';
-import { EmbeddedWallet } from '../../embedded_wallet';
 
 export type { OnboardingStatus, OnboardingStep };
 export { ONBOARDING_STEPS, ONBOARDING_STEPS_WITH_DRIP, getOnboardingSteps, getOnboardingStepsWithDrip };
@@ -109,7 +107,7 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     ? getOnboardingStepsWithDrip(state.hasSimulationGrant, state.useEmbeddedWallet)
     : getOnboardingSteps(state.hasSimulationGrant, state.useEmbeddedWallet);
   const currentStep = calculateCurrentStep(state.status, state.needsDrip, state.useEmbeddedWallet);
-  const baseSteps = state.useEmbeddedWallet ? 5 : 4;
+  const baseSteps = steps.length;
   const totalSteps = state.needsDrip ? baseSteps + 1 : baseSteps;
   const isSwapPending = state.status === 'completed' && state.pendingSwap;
   const isDripPending = state.status === 'executing_drip' && state.dripPassword !== null;
@@ -133,19 +131,14 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
           await registerBaseContracts();
         }
 
-        // Step 1b: After embedded wallet selection, deploy account if needed
+        // Step 1b: For embedded wallet, register contracts when entering 'registering' status
         if (
-          state.status === 'deploying_account' &&
+          state.status === 'registering' &&
           currentAddress &&
-          wallet &&
-          node &&
-          !state.hasDeployedAccount
+          isUsingEmbeddedWallet &&
+          !state.hasRegisteredBase
         ) {
-          actions.markDeployedAccount();
-          await deployEmbeddedAccount(wallet as EmbeddedWallet);
-          // After deployment, proceed to register contracts
           actions.markRegistered();
-          actions.advanceStatus('registering');
           await registerBaseContracts();
         }
 
@@ -189,7 +182,6 @@ export function OnboardingProvider({ children }: OnboardingProviderProps) {
     state.status,
     state.hasRegisteredBase,
     state.hasSimulated,
-    state.hasDeployedAccount,
     state.useEmbeddedWallet,
     currentAddress,
     isUsingEmbeddedWallet,

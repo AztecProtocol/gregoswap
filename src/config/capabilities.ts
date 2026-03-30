@@ -30,32 +30,46 @@ export function createGregoSwapCapabilities(network: NetworkConfig): AppCapabili
   const gregoCoinPremiumAddress = AztecAddress.fromString(network.contracts.gregoCoinPremium);
   const ammAddress = AztecAddress.fromString(network.contracts.amm);
   const popAddress = AztecAddress.fromString(network.contracts.pop);
-  const sponsoredFPCAddress = AztecAddress.fromString(network.contracts.sponsoredFPC);
 
-  // Specific contract addresses for registration
-  const contractAddresses = [ammAddress, gregoCoinAddress, gregoCoinPremiumAddress, popAddress, sponsoredFPCAddress];
+  // All contracts that need registration
+  const contractAddresses = [ammAddress, gregoCoinAddress, gregoCoinPremiumAddress, popAddress];
 
-  // Simulation patterns: specific contracts and functions
+  // Include subscription FPC if configured
+  const hasSubFPC = !!network.subscriptionFPC;
+  if (hasSubFPC) {
+    contractAddresses.push(AztecAddress.fromString(network.subscriptionFPC!.address));
+  }
+
+  // Simulation patterns
   const txSimulationPatterns: ContractFunctionPattern[] = [
-    // Balance queries for exchange rate (public balances)
     { contract: gregoCoinAddress, function: 'balance_of_public' },
     { contract: gregoCoinPremiumAddress, function: 'balance_of_public' },
   ];
 
   const utilitySimulationPatterns: ContractFunctionPattern[] = [
-    // Balance queries for user (private balances)
     { contract: gregoCoinAddress, function: 'balance_of_private' },
     { contract: gregoCoinPremiumAddress, function: 'balance_of_private' },
   ];
 
-  // Transaction patterns: specific contracts and functions
+  // Transaction patterns
   const transactionPatterns: ContractFunctionPattern[] = [
-    // Swap transaction
     { contract: ammAddress, function: 'swap_tokens_for_exact_tokens' },
-
-    // Drip transaction (ProofOfPassword)
     { contract: popAddress, function: 'check_password_and_mint' },
   ];
+
+  // Subscription FPC: the user calls subscribe/sponsor which internally dispatch
+  // the sponsored call + auth witnesses
+  if (hasSubFPC) {
+    const fpcAddress = AztecAddress.fromString(network.subscriptionFPC!.address);
+    transactionPatterns.push(
+      { contract: fpcAddress, function: 'subscribe' },
+      { contract: fpcAddress, function: 'sponsor' },
+    );
+    // The _from variant of the swap is called by the FPC on behalf of the user
+    transactionPatterns.push(
+      { contract: ammAddress, function: 'swap_tokens_for_exact_tokens_from' },
+    );
+  }
 
   return {
     version: '1.0',

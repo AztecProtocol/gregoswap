@@ -47,7 +47,7 @@ unconstrained fn mints_on_correct_password() {
 
     let token = Token::at(token_contract_address);
 
-    let balance = env.simulate_utility(token.balance_of_private(recipient));
+    let balance = env.execute_utility(token.balance_of_private(recipient));
 
     assert(balance == 1000, "Token was not minted")
 }
