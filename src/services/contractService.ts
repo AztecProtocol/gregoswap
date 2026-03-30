@@ -16,7 +16,6 @@ import type { ProofOfPasswordContract } from '../../contracts/target/ProofOfPass
 import { BigDecimal } from '../utils/bigDecimal';
 import type { NetworkConfig } from '../config/networks';
 import type { OnboardingResult } from '../contexts/onboarding/reducer';
-import { NO_FROM } from '@aztec/aztec.js/account';
 import {
   SubscriptionFPCContract,
   SubscriptionFPCContractArtifact,
@@ -288,19 +287,27 @@ export async function executeSwap(
 
 const SUBSCRIPTION_KEY = 'gregoswap_subscriptions';
 
-function hasSubscription(userAddress: string, contractAddress: string, selector: string): boolean {
-  try {
-    const subs = JSON.parse(localStorage.getItem(SUBSCRIPTION_KEY) ?? '{}');
-    return !!subs[`${userAddress}:${contractAddress}:${selector}`];
-  } catch { return false; }
+function subscriptionKey(fpcAddress: string, configIndex: number, userAddress: string): string {
+  return `${fpcAddress}:${configIndex}:${userAddress}`;
 }
 
-function markSubscribed(userAddress: string, contractAddress: string, selector: string) {
+function hasSubscription(fpcAddress: string, configIndex: number, userAddress: string): boolean {
   try {
     const subs = JSON.parse(localStorage.getItem(SUBSCRIPTION_KEY) ?? '{}');
-    subs[`${userAddress}:${contractAddress}:${selector}`] = true;
+    return !!subs[subscriptionKey(fpcAddress, configIndex, userAddress)];
+  } catch {
+    return false;
+  }
+}
+
+function markSubscribed(fpcAddress: string, configIndex: number, userAddress: string) {
+  try {
+    const subs = JSON.parse(localStorage.getItem(SUBSCRIPTION_KEY) ?? '{}');
+    subs[subscriptionKey(fpcAddress, configIndex, userAddress)] = true;
     localStorage.setItem(SUBSCRIPTION_KEY, JSON.stringify(subs));
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 /**
@@ -336,18 +343,16 @@ export async function executeSponsoredSwap(
 
   const configIndex = subFPC.functions[amm.address.toString()]?.[call.selector.toString()];
   if (configIndex == null) {
-    throw new Error(`No subscription config found for AMM ${amm.address.toString()} selector ${call.selector.toString()}`);
+    throw new Error(
+      `No subscription config found for AMM ${amm.address.toString()} selector ${call.selector.toString()}`,
+    );
   }
 
   const fpcAddress = AztecAddressClass.fromString(subFPC.address);
   const rawFPC = SubscriptionFPCContract.at(fpcAddress, wallet);
   const fpc = new SubscriptionFPC(rawFPC);
 
-  const subscribed = hasSubscription(
-    userAddress.toString(),
-    amm.address.toString(),
-    call.selector.toString(),
-  );
+  const subscribed = hasSubscription(subFPC.address, configIndex, userAddress.toString());
 
   if (subscribed) {
     const { receipt } = await fpc.helpers.sponsor({
@@ -362,11 +367,7 @@ export async function executeSponsoredSwap(
       configIndex,
       userAddress,
     });
-    markSubscribed(
-      userAddress.toString(),
-      amm.address.toString(),
-      call.selector.toString(),
-    );
+    markSubscribed(subFPC.address, configIndex, userAddress.toString());
     return receipt;
   }
 }

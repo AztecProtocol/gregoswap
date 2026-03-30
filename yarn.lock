@@ -1773,21 +1773,21 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@gregojuice/contracts@npm:^0.0.6":
-  version: 0.0.6
-  resolution: "@gregojuice/contracts@npm:0.0.6"
+"@gregojuice/contracts@npm:^0.0.9":
+  version: 0.0.9
+  resolution: "@gregojuice/contracts@npm:0.0.9"
   dependencies:
     "@aztec/aztec.js": "npm:v4.2.0-aztecnr-rc.2"
     "@aztec/foundation": "npm:v4.2.0-aztecnr-rc.2"
     "@aztec/stdlib": "npm:v4.2.0-aztecnr-rc.2"
     "@aztec/wallets": "npm:v4.2.0-aztecnr-rc.2"
-  checksum: 10c0/250e916637f49825689d4f9330bfc7bfc5be87cc331563721f106ff187f9c3bdfd0826ac203b15188edb4738f74e3e83f169015e10fd7a1e0b9daa29ba04bfa7
+  checksum: 10c0/3db8052dd8ca2687ebb95a6ae725761d68998ac5c7f9f6aac8e11c59ad0a2d791c0c3f953e72ad1b5c8f76b432c2b92d7ba8f367502b207f653e1cf22c5f781b
   languageName: node
   linkType: hard
 
-"@gregojuice/embedded-wallet@npm:^0.0.6":
-  version: 0.0.6
-  resolution: "@gregojuice/embedded-wallet@npm:0.0.6"
+"@gregojuice/embedded-wallet@npm:^0.0.9":
+  version: 0.0.9
+  resolution: "@gregojuice/embedded-wallet@npm:0.0.9"
   dependencies:
     "@aztec/aztec.js": "npm:v4.2.0-aztecnr-rc.2"
     "@aztec/entrypoints": "npm:v4.2.0-aztecnr-rc.2"
@@ -1796,7 +1796,7 @@ __metadata:
     "@aztec/stdlib": "npm:v4.2.0-aztecnr-rc.2"
     "@aztec/wallet-sdk": "npm:v4.2.0-aztecnr-rc.2"
     "@aztec/wallets": "npm:v4.2.0-aztecnr-rc.2"
-  checksum: 10c0/b9d891d278a2b2098cd0a4a8b7e2f5416cad3bc3b76737fc83630ca1515d6abf0e25d48bac5ca2413106d782a0a702c18403293bf1d3bf34c8c6cca18e61820a
+  checksum: 10c0/1791c0b26a48ec715d660afa4dae49c12c14b3620b19d3bf88bd55a7c1abb77ad3bc8f9d2edcbf805a9600b9cf7ef756fbae6b2eb839bfe3e5b74bc81caa303b
   languageName: node
   linkType: hard
 
@@ -6085,8 +6085,8 @@ __metadata:
     "@emotion/react": "npm:^11.14.0"
     "@emotion/styled": "npm:^11.14.0"
     "@eslint/js": "npm:^9.18.0"
-    "@gregojuice/contracts": "npm:^0.0.6"
-    "@gregojuice/embedded-wallet": "npm:^0.0.6"
+    "@gregojuice/contracts": "npm:^0.0.9"
+    "@gregojuice/embedded-wallet": "npm:^0.0.9"
     "@mui/icons-material": "npm:^6.3.1"
     "@mui/material": "npm:^6.3.1"
     "@mui/styles": "npm:^6.3.1"

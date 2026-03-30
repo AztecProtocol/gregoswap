@@ -17,8 +17,8 @@
   },
   "deployedAt": "2026-03-27T12:46:03.453Z",
   "subscriptionFPC": {
-    "address": "0x2d06051dcd4af644007aea19b5bf09adf2fbaa3c479248d2a27e8f4762cfebd3",
-    "secretKey": "0x12864c0b30ac609b3be4274c3270b3cae5b453797d6396a9d0863e8824ffe885",
+    "address": "0x2ef4be56d83d448d37909ede8ac3a4ac69daab309584a1bceebbc9f0639f825c",
+    "secretKey": "0x170b161f66a974fb1a0a82f43d0b90e6a2e7d43936c8bdab8aaf385c791ef58c",
     "functions": {
       "0x1633810e36969a20535577f0c477a6d17d74a5f562a5d287fb68bb5ccb2f3261": {
         "0xa539bd29": 0
