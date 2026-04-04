@@ -54,12 +54,21 @@ export async function registerSwapContracts(
   const { TokenContract, TokenContractArtifact } = await import('@aztec/noir-contracts.js/Token');
   const { AMMContract, AMMContractArtifact } = await import('../../contracts/target/AMM');
 
+  // Determine subscription FPC for sponsored swaps
+  const subFPC = network.subscriptionFPC;
+  const fpcAddress = subFPC ? AztecAddressClass.fromString(subFPC.address) : undefined;
+
   // Check which contracts are already registered
-  const [ammMetadata, gregoCoinMetadata, gregoCoinPremiumMetadata] = await wallet.batch([
+  const metadataChecks: { name: 'getContractMetadata'; args: [AztecAddress] }[] = [
     { name: 'getContractMetadata', args: [ammAddress] },
     { name: 'getContractMetadata', args: [gregoCoinAddress] },
     { name: 'getContractMetadata', args: [gregoCoinPremiumAddress] },
-  ]);
+  ];
+  if (fpcAddress) {
+    metadataChecks.push({ name: 'getContractMetadata', args: [fpcAddress] });
+  }
+  const metadataResults = await wallet.batch(metadataChecks);
+  const [ammMetadata, gregoCoinMetadata, gregoCoinPremiumMetadata] = metadataResults;
 
   // Reconstruct contract instances for unregistered contracts
   const [ammInstance, gregoCoinInstance, gregoCoinPremiumInstance] = await Promise.all([
@@ -98,6 +107,23 @@ export async function registerSwapContracts(
   if (gregoCoinPremiumInstance) {
     // gregoCoinPremium shares the same artifact as gregoCoin, so we can omit it
     registrationBatch.push({ name: 'registerContract', args: [gregoCoinPremiumInstance, undefined, undefined] });
+  }
+
+  // Register subscription FPC for sponsored swaps (if configured and not yet registered)
+  if (subFPC && fpcAddress) {
+    const fpcMetadata = metadataResults[3];
+    if (!fpcMetadata?.result?.instance) {
+      const instance = await node.getContract(fpcAddress);
+      if (!instance) {
+        throw new Error(`Subscription FPC at ${subFPC.address} not found on-chain`);
+      }
+      const secretKey = Fr.fromString(subFPC.secretKey);
+      const { SubscriptionFPCContractArtifact } = await import('@gregojuice/contracts/artifacts/SubscriptionFPC');
+      registrationBatch.push({
+        name: 'registerContract',
+        args: [instance, SubscriptionFPCContractArtifact, secretKey],
+      });
+    }
   }
 
   // Only call batch if there are contracts to register
