@@ -1,20 +1,20 @@
 import { Button } from '@mui/material';
+import type { SubscriptionStatus } from '../../services/contractService';
 
 interface SwapButtonProps {
   onClick: () => void;
   disabled: boolean;
   contractsLoading: boolean;
   hasAmount: boolean;
+  subscriptionStatus: SubscriptionStatus;
 }
 
-export function SwapButton({ onClick, disabled, contractsLoading, hasAmount }: SwapButtonProps) {
+export function SwapButton({ onClick, disabled, contractsLoading, hasAmount, subscriptionStatus }: SwapButtonProps) {
+  const { kind } = subscriptionStatus;
   const getButtonText = () => {
-    if (contractsLoading) {
-      return 'Loading contracts...';
-    }
-    if (!hasAmount) {
-      return 'Enter an amount';
-    }
+    if (contractsLoading) return 'Loading contracts...';
+    if (!hasAmount) return 'Enter an amount';
+    if (kind === 'full' || kind === 'depleted') return 'Bridge ETH to swap';
     return 'Swap';
   };
 

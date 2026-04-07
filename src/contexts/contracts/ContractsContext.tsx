@@ -6,6 +6,7 @@
 import { createContext, useContext, useEffect, type ReactNode, useCallback } from 'react';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { TxReceipt } from '@aztec/stdlib/tx';
+import type { AMMContract } from '../../../contracts/target/AMM';
 import { useWallet } from '../wallet';
 import { useNetwork } from '../network';
 import * as contractService from '../../services/contractService';
@@ -19,8 +20,10 @@ interface ContractsContextType {
   registerDripContracts: () => Promise<void>;
 
   // Utility methods
+  getAmm: () => AMMContract | null;
   getExchangeRate: () => Promise<number>;
   swap: (amountOut: number, amountInMax: number) => Promise<TxReceipt>;
+  unsponsoredSwap: (amountOut: number, amountInMax: number) => Promise<TxReceipt>;
   fetchBalances: () => Promise<[bigint, bigint]>;
   simulateOnboardingQueries: () => Promise<[number, bigint, bigint]>;
   drip: (password: string, recipient: AztecAddress) => Promise<TxReceipt>;
@@ -80,6 +83,11 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     }
   }, [wallet, node, activeNetwork, actions]);
 
+  // Get AMM contract instance (for hooks that need it)
+  const getAmm = useCallback((): AMMContract | null => {
+    return state.contracts.amm ?? null;
+  }, [state.contracts.amm]);
+
   // Get exchange rate
   const getExchangeRate = useCallback(async (): Promise<number> => {
     if (
@@ -128,6 +136,33 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
       );
     },
     [wallet, currentAddress, activeNetwork, state.contracts],
+  );
+
+  // Execute unsponsored swap (user pays own gas)
+  const unsponsoredSwap = useCallback(
+    async (amountOut: number, amountInMax: number): Promise<TxReceipt> => {
+      if (
+        !wallet ||
+        !currentAddress ||
+        !state.contracts.amm ||
+        !state.contracts.gregoCoin ||
+        !state.contracts.gregoCoinPremium
+      ) {
+        throw new Error('Contracts not initialized');
+      }
+
+      return contractService.executeUnsponsoredSwap(
+        {
+          gregoCoin: state.contracts.gregoCoin,
+          gregoCoinPremium: state.contracts.gregoCoinPremium,
+          amm: state.contracts.amm,
+        },
+        currentAddress,
+        amountOut,
+        amountInMax,
+      );
+    },
+    [wallet, currentAddress, state.contracts],
   );
 
   // Fetch balances
@@ -211,8 +246,10 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     isLoadingContracts: state.isLoading,
     registerBaseContracts,
     registerDripContracts,
+    getAmm,
     getExchangeRate,
     swap,
+    unsponsoredSwap,
     fetchBalances,
     simulateOnboardingQueries,
     drip,

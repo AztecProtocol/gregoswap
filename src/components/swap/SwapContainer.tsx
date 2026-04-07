@@ -4,26 +4,30 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Paper, Box } from '@mui/material';
+import { Paper, Box, Collapse, Alert } from '@mui/material';
 import SwapVertIcon from '@mui/icons-material/SwapVert';
 import { SwapBox } from './SwapBox';
 import { SwapProgress } from './SwapProgress';
 import { ExchangeRateDisplay } from './ExchangeRateDisplay';
 import { SwapButton } from './SwapButton';
 import { SwapErrorAlert } from './SwapErrorAlert';
+import { SubscriptionStatusBadge } from './SubscriptionStatusBadge';
+import { SponsorshipToggle } from './SponsorshipToggle';
 import { useContracts } from '../../contexts/contracts';
 import { useWallet } from '../../contexts/wallet';
 import { useOnboarding } from '../../contexts/onboarding';
 import { useSwap } from '../../contexts/swap';
+import { useSubscriptionStatus } from '../../hooks/useSubscriptionStatus';
 import type { Balances } from '../../types';
 
 export function SwapContainer() {
   const { isLoadingContracts, fetchBalances } = useContracts();
-  const { currentAddress } = useWallet();
+  const { currentAddress, isUsingEmbeddedWallet } = useWallet();
   const {
     status: onboardingStatus,
     startOnboarding,
     isDripping,
+    dripPhase,
     dripError,
     dismissDripError,
   } = useOnboarding();
@@ -39,11 +43,30 @@ export function SwapContainer() {
     isSwapping,
     phase: swapPhase,
     error: swapError,
+    bypassSponsorship,
+    setBypassSponsorship,
     setFromAmount,
     setToAmount,
     executeSwap,
     dismissError: dismissSwapError,
   } = useSwap();
+
+  const subscriptionStatus = useSubscriptionStatus(isSwapping);
+  const isBlocked = subscriptionStatus.kind === 'full' || subscriptionStatus.kind === 'depleted';
+
+  // Drip success banner
+  const [showDripSuccess, setShowDripSuccess] = useState(false);
+  const dripSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (dripPhase === 'success') {
+      setShowDripSuccess(true);
+      dripSuccessTimerRef.current = setTimeout(() => setShowDripSuccess(false), 10000);
+    }
+    return () => {
+      if (dripSuccessTimerRef.current) clearTimeout(dripSuccessTimerRef.current);
+    };
+  }, [dripPhase]);
 
   // Local balance state
   const [balances, setBalances] = useState<Balances>({ gregoCoin: null, gregoCoinPremium: null });
@@ -102,12 +125,10 @@ export function SwapContainer() {
   }, [swapError, dripError]);
 
   const handleSwapClick = () => {
-    // Check if user needs onboarding
+    setShowDripSuccess(false);
     if (!isOnboarded) {
-      // Start onboarding - user initiated a swap transaction
       startOnboarding(true);
     } else {
-      // Already onboarded, execute swap directly
       executeSwap();
     }
   };
@@ -215,16 +236,42 @@ export function SwapContainer() {
       {/* Exchange Rate Info */}
       <ExchangeRateDisplay exchangeRate={exchangeRate} isLoadingRate={isLoadingRate} />
 
+      {/* Drip success banner */}
+      <Collapse in={showDripSuccess} timeout={{ enter: 300, exit: 600 }}>
+        <Alert
+          severity="success"
+          onClose={() => setShowDripSuccess(false)}
+          sx={{
+            mt: 2,
+            backgroundColor: 'rgba(212, 255, 40, 0.08)',
+            border: '1px solid rgba(212, 255, 40, 0.3)',
+            color: '#D4FF28',
+            '& .MuiAlert-icon': { color: '#D4FF28' },
+            '& .MuiIconButton-root': { color: '#D4FF28' },
+          }}
+        >
+          GregoCoin received — you're ready to swap!
+        </Alert>
+      </Collapse>
+
       {/* Swap Button or Progress */}
       {isSwapping ? (
         <SwapProgress />
       ) : (
-        <SwapButton
-          onClick={handleSwapClick}
-          disabled={!canSwap || isDripping}
-          contractsLoading={isLoadingContracts}
-          hasAmount={!!fromAmount && parseFloat(fromAmount) > 0}
-        />
+        <>
+          <SwapButton
+            onClick={handleSwapClick}
+            disabled={!canSwap || isDripping || isBlocked}
+            contractsLoading={isLoadingContracts}
+            hasAmount={!!fromAmount && parseFloat(fromAmount) > 0}
+            subscriptionStatus={subscriptionStatus}
+          />
+          {!isUsingEmbeddedWallet && subscriptionStatus.kind !== 'no_fpc' ? (
+            <SponsorshipToggle status={subscriptionStatus} value={bypassSponsorship} onChange={setBypassSponsorship} />
+          ) : (
+            <SubscriptionStatusBadge status={subscriptionStatus} />
+          )}
+        </>
       )}
 
       {/* Error Display */}

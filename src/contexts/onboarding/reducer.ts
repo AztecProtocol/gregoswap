@@ -142,8 +142,17 @@ export function onboardingReducer(state: OnboardingState, action: OnboardingActi
     case 'onboarding/COMPLETE':
       return { ...state, status: 'completed', error: null };
 
-    case 'onboarding/CLOSE_MODAL':
-      return { ...state, isModalOpen: false, dripPassword: null };
+    case 'onboarding/CLOSE_MODAL': {
+      // If closed mid-drip, resolve to a usable state:
+      // - completed if we already have a result (user has tokens), otherwise idle
+      const statusOnClose =
+        state.status === 'executing_drip' || state.status === 'awaiting_drip' || state.status === 'registering_drip'
+          ? state.result
+            ? 'completed'
+            : 'idle'
+          : state.status;
+      return { ...state, isModalOpen: false, dripPassword: null, status: statusOnClose, dripPhase: 'idle', dripError: null };
+    }
 
     case 'onboarding/CLEAR_PENDING_SWAP':
       return { ...state, pendingSwap: false, isModalOpen: false };
@@ -165,7 +174,7 @@ export function onboardingReducer(state: OnboardingState, action: OnboardingActi
       return { ...state, dripPhase: 'error', dripError: action.error };
 
     case 'onboarding/DISMISS_DRIP_ERROR':
-      return { ...state, dripPhase: 'idle', dripError: null };
+      return { ...state, status: 'awaiting_drip', dripPhase: 'idle', dripError: null, dripPassword: null };
 
     default:
       return state;

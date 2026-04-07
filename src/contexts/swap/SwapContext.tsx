@@ -3,8 +3,9 @@
  * Manages swap UI state and execution
  */
 
-import { createContext, useContext, useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useContracts } from '../contracts';
+import { useWallet } from '../wallet';
 import { useOnboarding } from '../onboarding';
 import { useSwapReducer, type SwapState } from './reducer';
 import { GREGOCOIN_USD_PRICE, EXCHANGE_RATE_POLL_INTERVAL_MS } from '../../types';
@@ -15,6 +16,10 @@ interface SwapContextType extends SwapState {
   toAmountUSD: number;
   canSwap: boolean;
   isSwapping: boolean;
+
+  // Sponsorship opt-out (external wallets only)
+  bypassSponsorship: boolean;
+  setBypassSponsorship: (value: boolean) => void;
 
   // Actions
   setFromAmount: (amount: string) => void;
@@ -39,7 +44,8 @@ interface SwapProviderProps {
 }
 
 export function SwapProvider({ children }: SwapProviderProps) {
-  const { swap, isLoadingContracts, getExchangeRate } = useContracts();
+  const { swap, unsponsoredSwap, isLoadingContracts, getExchangeRate } = useContracts();
+  const { isUsingEmbeddedWallet } = useWallet();
   const {
     status: onboardingStatus,
     onboardingResult,
@@ -49,6 +55,14 @@ export function SwapProvider({ children }: SwapProviderProps) {
   } = useOnboarding();
 
   const [state, actions] = useSwapReducer();
+  const [bypassSponsorship, setBypassSponsorship] = useState(false);
+
+  // Reset bypass when switching back to embedded wallet
+  useEffect(() => {
+    if (isUsingEmbeddedWallet) {
+      setBypassSponsorship(false);
+    }
+  }, [isUsingEmbeddedWallet]);
 
   // Refs for rate fetching and orchestration
   const isFetchingRateRef = useRef(false);
@@ -69,7 +83,8 @@ export function SwapProvider({ children }: SwapProviderProps) {
     actions.startSwap();
 
     try {
-      await swap(parseFloat(state.toAmount), parseFloat(state.fromAmount) * 1.1);
+      const swapFn = bypassSponsorship ? unsponsoredSwap : swap;
+      await swapFn(parseFloat(state.toAmount), parseFloat(state.fromAmount) * 1.1);
       actions.swapSuccess();
     } catch (error) {
       let errorMessage = 'Swap failed. Please try again.';
@@ -88,7 +103,7 @@ export function SwapProvider({ children }: SwapProviderProps) {
 
       actions.swapError(errorMessage);
     }
-  }, [isLoadingContracts, state.fromAmount, state.toAmount, swap, actions]);
+  }, [isLoadingContracts, state.fromAmount, state.toAmount, swap, unsponsoredSwap, bypassSponsorship, actions]);
 
   // Pre-populate exchange rate from onboarding result
   useEffect(() => {
@@ -234,6 +249,8 @@ export function SwapProvider({ children }: SwapProviderProps) {
     toAmountUSD,
     canSwap,
     isSwapping,
+    bypassSponsorship,
+    setBypassSponsorship,
     setFromAmount,
     setToAmount,
     executeSwap: doSwap,
