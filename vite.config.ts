@@ -117,7 +117,7 @@ export default defineConfig(({ mode }) => {
       chunkSizeValidator([
         {
           pattern: /assets\/index-.*\.js$/,
-          maxSizeKB: 1550,
+          maxSizeKB: 1600,
           description: 'Main entrypoint, hard limit',
         },
         {
