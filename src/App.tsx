@@ -1,10 +1,14 @@
-import { ThemeProvider, CssBaseline, Container, Box, Typography } from '@mui/material';
+import { useState } from 'react';
+import { ThemeProvider, CssBaseline, Container, Box, Typography, Tabs, Tab } from '@mui/material';
 import { theme } from './theme';
 import { GregoSwapLogo } from './components/GregoSwapLogo';
 import { WalletChip } from './components/WalletChip';
 import { NetworkSwitcher } from './components/NetworkSwitcher';
 import { FooterInfo } from './components/FooterInfo';
 import { SwapContainer } from './components/swap';
+import { SendContainer } from './components/send/SendContainer';
+import { ClaimPage } from './components/claim/ClaimPage';
+import { isClaimRoute } from './services/offchainLinkService';
 import { useWallet } from './contexts/wallet';
 import { useOnboarding } from './contexts/onboarding';
 import { OnboardingModal } from './components/OnboardingModal';
@@ -12,6 +16,7 @@ import { TxNotificationCenter } from './components/TxNotificationCenter';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 
 export function App() {
+  const [activeTab, setActiveTab] = useState(0);
   const { disconnectWallet, setCurrentAddress, currentAddress, error: walletError, isLoading: walletLoading } = useWallet();
   const { isOnboardingModalOpen, startOnboarding, resetOnboarding, status: onboardingStatus } = useOnboarding();
 
@@ -29,6 +34,40 @@ export function App() {
     await disconnectWallet();
     resetOnboarding();
   };
+
+  if (isClaimRoute()) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Box
+          sx={{
+            minHeight: '100vh',
+            backgroundColor: 'background.default',
+            py: 4,
+            position: 'relative',
+            overflow: 'hidden',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundImage: 'url(/background.jpg)',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
+              filter: 'grayscale(60%) brightness(0.5) contrast(0.8) saturate(0.8)',
+              opacity: 0.6,
+              zIndex: 0,
+            },
+          }}
+        >
+          <ClaimPage />
+        </Box>
+      </ThemeProvider>
+    );
+  }
 
   return (
     <ThemeProvider theme={theme}>
@@ -79,8 +118,25 @@ export function App() {
             </Typography>
           </Box>
 
-          {/* Swap Interface */}
-          <SwapContainer />
+          {/* Tab Bar */}
+          <Tabs
+            value={activeTab}
+            onChange={(_, value) => setActiveTab(value)}
+            centered
+            sx={{
+              mb: 3,
+              '& .MuiTab-root': { color: 'text.secondary', fontWeight: 600 },
+              '& .Mui-selected': { color: 'primary.main' },
+              '& .MuiTabs-indicator': { backgroundColor: 'primary.main' },
+            }}
+          >
+            <Tab label="Swap" />
+            <Tab label="Send" />
+          </Tabs>
+
+          {/* Tab Content */}
+          {activeTab === 0 && <SwapContainer />}
+          {activeTab === 1 && <SendContainer />}
 
           {/* Wallet Error Display */}
           {walletError && (
