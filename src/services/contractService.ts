@@ -542,6 +542,60 @@ export async function executeDrip(
 }
 
 /**
+ * Offchain message returned by transfer_offchain
+ */
+export interface OffchainMessage {
+  recipient: AztecAddress;
+  payload: Fr[];
+  contractAddress: AztecAddress;
+  anchorBlockTimestamp: bigint;
+}
+
+/**
+ * Execute an offchain token transfer.
+ * Sends tokens privately with offchain note delivery, self-delivers the sender's
+ * change note, and returns the recipient's offchain messages for link encoding.
+ */
+export async function executeTransferOffchain(
+  contracts: SwapContracts,
+  tokenKey: 'gregoCoin' | 'gregoCoinPremium',
+  fromAddress: AztecAddress,
+  recipient: AztecAddress,
+  amount: bigint,
+): Promise<{ receipt: TxReceipt; offchainMessages: OffchainMessage[] }> {
+  const token = contracts[tokenKey];
+
+  // 1. Send the offchain transfer transaction
+  const { receipt, offchainMessages } = await (token.methods as any)
+    .transfer_offchain(recipient, amount)
+    .send({ from: fromAddress });
+
+  // 2. Self-deliver sender's change note (manual until F-324 lands)
+  const senderMessages = offchainMessages.filter(
+    (msg: OffchainMessage) => msg.recipient.equals(fromAddress),
+  );
+  if (senderMessages.length > 0) {
+    await (token.methods as any)
+      .offchain_receive(
+        senderMessages.map((msg: OffchainMessage) => ({
+          ciphertext: msg.payload,
+          recipient: fromAddress,
+          tx_hash: receipt.txHash.hash,
+          anchor_block_timestamp: msg.anchorBlockTimestamp,
+        })),
+      )
+      .simulate({ from: fromAddress });
+  }
+
+  // 3. Filter and return recipient's messages for link encoding
+  const recipientMessages = offchainMessages.filter(
+    (msg: OffchainMessage) => msg.recipient.equals(recipient),
+  );
+
+  return { receipt, offchainMessages: recipientMessages };
+}
+
+/**
  * Parses a drip error into a user-friendly message
  */
 export function parseDripError(error: unknown): string {
@@ -565,4 +619,16 @@ export function parseDripError(error: unknown): string {
   }
 
   return message;
+}
+
+/**
+ * Parses a send (offchain transfer) error into a user-friendly message
+ */
+export function parseSendError(error: unknown): string {
+  if (!(error instanceof Error)) return 'Send failed. Please try again.';
+  const msg = error.message;
+  if (msg.includes('Balance too low')) return 'Insufficient token balance';
+  if (msg.includes('User denied') || msg.includes('rejected')) return 'Transaction was rejected in wallet';
+  if (msg.includes('invalid') && msg.includes('address')) return 'Invalid recipient address';
+  return msg;
 }
