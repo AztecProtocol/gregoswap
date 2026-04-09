@@ -180,22 +180,22 @@ export async function registerDripContracts(
   }
 
   // Register subscription FPC if configured and not yet registered
-  if (!subFPC) {
-    throw new Error('No subscriptionFPC configured for this network');
-  }
-  const subFPCMetadata = metadataResults[1];
-  if (!subFPCMetadata.result.instance) {
-    const fpcAddress = AztecAddressClass.fromString(subFPC.address);
-    const secretKey = Fr.fromString(subFPC.secretKey);
-    const instance = await node.getContract(fpcAddress);
-    if (!instance) {
-      throw new Error(`Subscription FPC at ${subFPC.address} not found on-chain`);
+  if (subFPC) {
+    const subFPCMetadata = metadataResults[1];
+    if (!subFPCMetadata?.result?.instance) {
+      const fpcAddress = AztecAddressClass.fromString(subFPC.address);
+      const secretKey = Fr.fromString(subFPC.secretKey);
+      const instance = await node.getContract(fpcAddress);
+      if (!instance) {
+        console.warn(`Subscription FPC at ${subFPC.address} not found on-chain, skipping`);
+      } else {
+        const { SubscriptionFPCContractArtifact } = await import('@gregojuice/contracts/artifacts/SubscriptionFPC');
+        registrationBatch.push({
+          name: 'registerContract',
+          args: [instance, SubscriptionFPCContractArtifact, secretKey],
+        });
+      }
     }
-    const { SubscriptionFPCContractArtifact } = await import('@gregojuice/contracts/artifacts/SubscriptionFPC');
-    registrationBatch.push({
-      name: 'registerContract',
-      args: [instance, SubscriptionFPCContractArtifact, secretKey],
-    });
   }
 
   // Only call batch if there are contracts to register
@@ -515,7 +515,7 @@ export async function executeDrip(
 ): Promise<TxReceipt> {
   const subFPC = network.subscriptionFPC;
   if (!subFPC) {
-    throw new Error('No subscriptionFPC configured for this network');
+    throw new Error('Drip requires subscriptionFPC which is not configured for this network. Use the Send tab to transfer tokens directly.');
   }
 
   const call = await pop.methods.check_password_and_mint(password, recipient).getFunctionCall();
