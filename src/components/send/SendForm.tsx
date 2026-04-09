@@ -6,10 +6,9 @@ interface SendFormProps {
 }
 
 export function SendForm({ balance }: SendFormProps) {
-  const { token, recipientAddress, amount, phase, setToken, setRecipientAddress, setAmount } = useSend();
+  const { token, recipientAddress, amount, phase, setToken, setRecipientAddress, setAmount, canSend, executeSend } = useSend();
   const isSending = phase === 'sending' || phase === 'generating_link';
   const currentBalance = token === 'gc' ? balance.gc : balance.gcp;
-  const canSend = !!amount && parseFloat(amount) > 0 && !!recipientAddress && !isSending;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -27,7 +26,7 @@ export function SendForm({ balance }: SendFormProps) {
         <TextField label="Amount" type="number" value={amount} onChange={e => setAmount(e.target.value)} fullWidth disabled={isSending} size="small"
           slotProps={{ input: { endAdornment: currentBalance !== null ? <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>Balance: {currentBalance.toString()}</Typography> : null } }} />
       </Box>
-      <Button variant="contained" fullWidth disabled={!canSend} onClick={() => {}} sx={{ mt: 1, fontWeight: 'bold' }}>
+      <Button variant="contained" fullWidth disabled={!canSend || isSending} onClick={executeSend} sx={{ mt: 1, fontWeight: 'bold' }}>
         {isSending ? 'Sending...' : 'Send & Generate Link'}
       </Button>
     </Box>

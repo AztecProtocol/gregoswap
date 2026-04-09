@@ -4,6 +4,8 @@ import { extractClaimPayload, type TransferLink } from '../../services/offchainL
 import { ClaimProgress } from './ClaimProgress';
 import { ClaimSuccess } from './ClaimSuccess';
 import { GregoSwapLogo } from '../GregoSwapLogo';
+import { useContracts } from '../../contexts/contracts';
+import { useWallet } from '../../contexts/wallet';
 
 type ClaimState =
   | { phase: 'decoding' }
@@ -15,6 +17,8 @@ type ClaimState =
 
 export function ClaimPage() {
   const [state, setState] = useState<ClaimState>({ phase: 'decoding' });
+  const { claimOffchainTransfer, registerBaseContracts, fetchBalances, isLoadingContracts } = useContracts();
+  const { wallet, currentAddress } = useWallet();
 
   // Step 1: Decode the link on mount
   useEffect(() => {
@@ -26,26 +30,58 @@ export function ClaimPage() {
     setState({ phase: 'preview', data });
   }, []);
 
-  // Step 2: Execute the claim (will be fully wired in Task 10)
+  // Step 2: Execute the claim
   const doClaim = useCallback(async () => {
     if (state.phase !== 'preview') return;
     const { data } = state;
     setState({ phase: 'claiming', data });
 
     try {
-      // TODO(Task 10): Wire offchain_receive via ContractsContext
-      // 1. Ensure wallet is connected/created
-      // 2. Register token contract
-      // 3. Call claimOffchainTransfer(tokenKey, message)
-      // 4. Verify balance
+      // Ensure contracts are registered
+      if (wallet && !isLoadingContracts) {
+        try { await registerBaseContracts(); } catch { /* may already be registered */ }
+      }
 
-      // For now, simulate the flow progression
-      setState({ phase: 'error', message: 'Claim not yet wired — will be connected in Task 10.' });
+      if (!wallet || !currentAddress) {
+        setState({ phase: 'error', message: 'No wallet available. Please refresh and try again.' });
+        return;
+      }
+
+      // Get balance before claim (for verification)
+      let balanceBefore = 0n;
+      try {
+        const [gc, gcp] = await fetchBalances();
+        balanceBefore = data.token === 'gc' ? gc : gcp;
+      } catch { /* new wallet may have no balance */ }
+
+      // Reconstruct Fr values and call offchain_receive
+      const { Fr } = await import('@aztec/aztec.js/fields');
+      const { AztecAddress } = await import('@aztec/aztec.js/addresses');
+
+      const tokenKey = data.token === 'gc' ? 'gregoCoin' as const : 'gregoCoinPremium' as const;
+
+      await claimOffchainTransfer(tokenKey, {
+        ciphertext: data.payload.map((s: string) => Fr.fromString(s)),
+        recipient: AztecAddress.fromString(data.recipient),
+        tx_hash: data.txHash,
+        anchor_block_timestamp: BigInt(data.anchorBlockTimestamp),
+      });
+
+      setState({ phase: 'verifying', data });
+
+      // Verify balance
+      const [gcAfter, gcpAfter] = await fetchBalances();
+      const balanceAfter = data.token === 'gc' ? gcAfter : gcpAfter;
+      const received = balanceAfter - balanceBefore;
+      const expectedAmount = BigInt(Math.round(parseFloat(data.amount)));
+      const verified = received >= expectedAmount;
+
+      setState({ phase: 'claimed', data, verified });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Claim failed. Please try again.';
       setState({ phase: 'error', message });
     }
-  }, [state]);
+  }, [state, wallet, currentAddress, isLoadingContracts, registerBaseContracts, fetchBalances, claimOffchainTransfer]);
 
   const handleGoToSwap = () => {
     window.location.hash = '';
