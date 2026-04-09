@@ -1,5 +1,6 @@
 [workspace]
 members = [
     "proof_of_password",
-    "amm"
+    "amm",
+    "token"
 ]
