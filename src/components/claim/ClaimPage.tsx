@@ -1,5 +1,7 @@
 import { Box, Typography, Button, Alert, CircularProgress, Container, Chip } from '@mui/material';
 import { useEffect, useState, useCallback } from 'react';
+import { Fr } from '@aztec/aztec.js/fields';
+import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { extractClaimPayload, type TransferLink } from '../../services/offchainLinkService';
 import { ClaimProgress } from './ClaimProgress';
 import { ClaimSuccess } from './ClaimSuccess';
@@ -55,9 +57,6 @@ export function ClaimPage() {
       } catch { /* new wallet may have no balance */ }
 
       // Reconstruct Fr values and call offchain_receive
-      const { Fr } = await import('@aztec/aztec.js/fields');
-      const { AztecAddress } = await import('@aztec/aztec.js/addresses');
-
       const tokenKey = data.token === 'gc' ? 'gregoCoin' as const : 'gregoCoinPremium' as const;
 
       await claimOffchainTransfer(tokenKey, {
