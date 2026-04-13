@@ -8,7 +8,7 @@ import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { Fr } from '@aztec/foundation/curves/bn254';
 import type { TxReceipt } from '@aztec/stdlib/tx';
 import type { AMMContract } from '../../../contracts/target/AMM';
-import type { OffchainMessage } from '../../services/contractService';
+import type { OffchainMessage } from '@aztec/aztec.js/contracts';
 import { useWallet } from '../wallet';
 import { useNetwork } from '../network';
 import * as contractService from '../../services/contractService';

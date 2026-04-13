@@ -9,7 +9,7 @@ import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { AztecAddress as AztecAddressClass } from '@aztec/aztec.js/addresses';
 import { Fr } from '@aztec/aztec.js/fields';
 import { FunctionSelector } from '@aztec/aztec.js/abi';
-import { BatchCall, getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
+import { BatchCall, getContractInstanceFromInstantiationParams, type OffchainMessage } from '@aztec/aztec.js/contracts';
 import { poseidon2Hash } from '@aztec/foundation/crypto/poseidon';
 import type { TxReceipt } from '@aztec/stdlib/tx';
 import type { TokenContract } from '../../contracts/target/Token';
@@ -539,16 +539,6 @@ export async function executeDrip(
     userAddress,
   });
   return receipt;
-}
-
-/**
- * Offchain message returned by transfer_in_private_deliver_offchain
- */
-export interface OffchainMessage {
-  recipient: AztecAddress;
-  payload: Fr[];
-  contractAddress: AztecAddress;
-  anchorBlockTimestamp: bigint;
 }
 
 /**
