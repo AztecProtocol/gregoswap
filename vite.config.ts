@@ -110,6 +110,7 @@ export default defineConfig(({ mode }) => {
     },
     optimizeDeps: {
       exclude: ['@aztec/noir-acvm_js', '@aztec/noir-noirc_abi', '@aztec/bb.js'],
+      include: ['@gregojuice/embedded-wallet/ui'],
     },
     plugins: [
       react({ jsxImportSource: '@emotion/react' }),

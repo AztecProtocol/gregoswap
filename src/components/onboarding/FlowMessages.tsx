@@ -14,7 +14,7 @@ interface FlowMessagesProps {
 
 export function FlowMessages({ status, hasSimulationGrant, useEmbeddedWallet }: FlowMessagesProps) {
   // Show message during simulation - different text based on whether grant was given
-  if (status === 'simulating') {
+  if (status === 'simulating' && !useEmbeddedWallet) {
     return (
       <Box
         sx={{

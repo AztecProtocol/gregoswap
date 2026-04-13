@@ -8,7 +8,7 @@ import { SwapContainer } from './components/swap';
 import { useWallet } from './contexts/wallet';
 import { useOnboarding } from './contexts/onboarding';
 import { OnboardingModal } from './components/OnboardingModal';
-import { TxNotificationCenter } from './components/TxNotificationCenter';
+import { TxNotificationCenter } from '@gregojuice/embedded-wallet/ui';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 
 export function App() {

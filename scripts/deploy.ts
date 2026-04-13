@@ -11,13 +11,7 @@ import type { EmbeddedWallet } from '@aztec/wallets/embedded';
 import { ProofOfPasswordContract } from '../contracts/target/ProofOfPassword.ts';
 import { BatchCall } from '@aztec/aztec.js/contracts';
 
-import {
-  parseNetwork,
-  parseAddressList,
-  NETWORK_URLS,
-  setupWallet,
-  getOrCreateDeployer,
-} from './utils.ts';
+import { parseNetwork, parseAddressList, NETWORK_URLS, setupWallet, getOrCreateDeployer } from './utils.ts';
 
 const NETWORK = parseNetwork();
 const MINT_TO_ADDRESSES = parseAddressList('--mint-to', 'MINT_TO');

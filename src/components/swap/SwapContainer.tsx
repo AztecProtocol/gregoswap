@@ -51,7 +51,7 @@ export function SwapContainer() {
     dismissError: dismissSwapError,
   } = useSwap();
 
-  const subscriptionStatus = useSubscriptionStatus(isSwapping);
+  const subscriptionStatus = useSubscriptionStatus(isSwapping, swapPhase, dripPhase);
   const isBlocked = subscriptionStatus.kind === 'full' || subscriptionStatus.kind === 'depleted';
 
   // Drip success banner
