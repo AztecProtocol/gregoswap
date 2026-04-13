@@ -6090,6 +6090,7 @@ __metadata:
     "@aztec/aztec.js": "npm:v4.2.0-nightly.20260412"
     "@aztec/constants": "npm:v4.2.0-nightly.20260412"
     "@aztec/entrypoints": "npm:v4.2.0-nightly.20260412"
+    "@aztec/ethereum": "npm:4.2.0-nightly.20260412"
     "@aztec/foundation": "npm:v4.2.0-nightly.20260412"
     "@aztec/noir-contracts.js": "npm:v4.2.0-nightly.20260412"
     "@aztec/protocol-contracts": "npm:v4.2.0-nightly.20260412"
