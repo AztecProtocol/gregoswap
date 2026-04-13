@@ -1,14 +1,18 @@
 import { Box, TextField, Typography, ToggleButton, ToggleButtonGroup, Button } from '@mui/material';
+import WaterDropIcon from '@mui/icons-material/WaterDrop';
 import { useSend } from '../../contexts/send';
 
 interface SendFormProps {
   balance: { gc: bigint | null; gcp: bigint | null };
+  onRequestFaucet: () => void;
+  faucetBusy: boolean;
 }
 
-export function SendForm({ balance }: SendFormProps) {
+export function SendForm({ balance, onRequestFaucet, faucetBusy }: SendFormProps) {
   const { token, recipientAddress, amount, phase, setToken, setRecipientAddress, setAmount, canSend, executeSend } = useSend();
   const isSending = phase === 'sending' || phase === 'generating_link';
   const currentBalance = token === 'gc' ? balance.gc : balance.gcp;
+  const selectedTokenIsEmpty = currentBalance === 0n;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -26,6 +30,18 @@ export function SendForm({ balance }: SendFormProps) {
         <TextField label="Amount" type="number" value={amount} onChange={e => setAmount(e.target.value)} fullWidth disabled={isSending} size="small"
           slotProps={{ input: { endAdornment: currentBalance !== null ? <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>Balance: {currentBalance.toString()}</Typography> : null } }} />
       </Box>
+      {selectedTokenIsEmpty && (
+        <Button
+          variant="outlined"
+          fullWidth
+          disabled={faucetBusy || isSending}
+          onClick={onRequestFaucet}
+          startIcon={<WaterDropIcon />}
+          sx={{ mt: 1 }}
+        >
+          {faucetBusy ? 'Preparing faucet...' : 'Get tokens from faucet'}
+        </Button>
+      )}
       <Button variant="contained" fullWidth disabled={!canSend || isSending} onClick={executeSend} sx={{ mt: 1, fontWeight: 'bold' }}>
         {isSending ? 'Sending...' : 'Send & Generate Link'}
       </Button>

@@ -5,10 +5,10 @@ interface ClaimSuccessProps {
   amount: string;
   tokenName: string;
   verified: boolean;
-  onGoToSwap: () => void;
+  onGoToSend: () => void;
 }
 
-export function ClaimSuccess({ amount, tokenName, verified, onGoToSwap }: ClaimSuccessProps) {
+export function ClaimSuccess({ amount, tokenName, verified, onGoToSend }: ClaimSuccessProps) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, py: 3 }}>
       <CheckCircleIcon sx={{ fontSize: 48, color: 'primary.main' }} />
@@ -17,7 +17,7 @@ export function ClaimSuccess({ amount, tokenName, verified, onGoToSwap }: ClaimS
         <Typography variant="h6" color="text.primary">{amount} {tokenName}</Typography>
         <Chip label={verified ? 'Verified' : 'Verifying...'} size="small" color={verified ? 'success' : 'default'} variant="outlined" />
       </Box>
-      <Button variant="contained" onClick={onGoToSwap} sx={{ mt: 2, fontWeight: 'bold' }}>Start Swapping →</Button>
+      <Button variant="contained" onClick={onGoToSend} sx={{ mt: 2, fontWeight: 'bold' }}>Back to app →</Button>
     </Box>
   );
 }

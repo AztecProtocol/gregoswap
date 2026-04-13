@@ -1,4 +1,4 @@
-import { Box, Typography, Button, Alert, CircularProgress, Container, Chip } from '@mui/material';
+import { Box, Typography, Button, Alert, CircularProgress, Chip } from '@mui/material';
 import { useEffect, useState, useCallback } from 'react';
 import { Fr } from '@aztec/aztec.js/fields';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
@@ -17,7 +17,11 @@ type ClaimState =
   | { phase: 'claimed'; data: TransferLink; verified: boolean }
   | { phase: 'error'; message: string };
 
-export function ClaimPage() {
+interface ClaimPageProps {
+  onClaimComplete: () => void;
+}
+
+export function ClaimPage({ onClaimComplete }: ClaimPageProps) {
   const [state, setState] = useState<ClaimState>({ phase: 'decoding' });
   const { claimOffchainTransfer, registerBaseContracts, fetchBalances, isLoadingContracts } = useContracts();
   const { wallet, currentAddress } = useWallet();
@@ -82,17 +86,19 @@ export function ClaimPage() {
     }
   }, [state, wallet, currentAddress, isLoadingContracts, registerBaseContracts, fetchBalances, claimOffchainTransfer]);
 
-  const handleGoToSwap = () => {
-    window.location.hash = '';
-    window.location.reload();
-  };
+  // After a successful claim, return to the main app and land on the Send tab.
+  // We just clear the hash and call the parent's callback — no reload, so the
+  // user's session (wallet, onboarding, contracts) is preserved.
+  const handleGoToSend = onClaimComplete;
 
   const tokenName = (t: string) => (t === 'gc' ? 'GregoCoin' : 'GregoCoinPremium');
 
   return (
-    <Container maxWidth="sm" sx={{ py: 4, position: 'relative', zIndex: 1 }}>
-      <Box sx={{ textAlign: 'center', mb: 4 }}>
-        <GregoSwapLogo height={40} />
+    <Box sx={{ py: 4 }}>
+      <Box sx={{ textAlign: 'center', mb: 6, mt: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+          <GregoSwapLogo height={56} />
+        </Box>
       </Box>
       <Box sx={{ p: 3, bgcolor: 'background.paper', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
         {state.phase === 'decoding' && (
@@ -113,10 +119,10 @@ export function ClaimPage() {
         {state.phase === 'claiming' && <ClaimProgress phase="claiming" />}
         {state.phase === 'verifying' && <ClaimProgress phase="verifying" />}
         {state.phase === 'claimed' && (
-          <ClaimSuccess amount={state.data.amount} tokenName={tokenName(state.data.token)} verified={state.verified} onGoToSwap={handleGoToSwap} />
+          <ClaimSuccess amount={state.data.amount} tokenName={tokenName(state.data.token)} verified={state.verified} onGoToSend={handleGoToSend} />
         )}
         {state.phase === 'error' && <Alert severity="error">{state.message}</Alert>}
       </Box>
-    </Container>
+    </Box>
   );
 }
