@@ -34,7 +34,8 @@ export function OnboardingProgress({
   status,
   isLoading,
 }: OnboardingProgressProps) {
-  const progress = (currentStep / totalSteps) * 100;
+  const isComplete = status === 'completed';
+  const progress = isComplete ? 100 : ((currentStep - 0.5) / totalSteps) * 100;
 
   const getStepStatus = (stepIndex: number): 'completed' | 'active' | 'pending' | 'error' => {
     if (status === 'error' && stepIndex === currentStep) return 'error';

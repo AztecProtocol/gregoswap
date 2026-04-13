@@ -193,8 +193,9 @@ export function calculateCurrentStep(status: OnboardingStatus, needsDrip: boolea
         return 0;
       case 'connecting':
       case 'registering':
-      case 'simulating':
         return 2;
+      case 'simulating':
+        return 3;
       case 'registering_drip':
         return 3;
       case 'awaiting_drip':
@@ -215,7 +216,6 @@ export function calculateCurrentStep(status: OnboardingStatus, needsDrip: boolea
     case 'registering':
       return 2;
     case 'simulating':
-      return 3;
     case 'registering_drip':
       return 3;
     case 'awaiting_drip':
