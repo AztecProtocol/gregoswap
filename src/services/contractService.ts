@@ -542,7 +542,7 @@ export async function executeDrip(
 }
 
 /**
- * Offchain message returned by transfer_offchain
+ * Offchain message returned by transfer_in_private_deliver_offchain
  */
 export interface OffchainMessage {
   recipient: AztecAddress;
@@ -572,11 +572,9 @@ export async function executeTransferOffchain(
 
   const token = contracts[tokenKey];
 
-  // Build the FPC-friendly call (transfer_offchain_from takes the sender explicitly +
-  // an authwit_nonce so the wallet can authorize the FPC to dispatch on the user's behalf)
   const authwitNonce = Fr.random();
   const call = await token.methods
-    .transfer_offchain_from(fromAddress, recipient, amount, authwitNonce)
+    .transfer_in_private_deliver_offchain(fromAddress, recipient, amount, authwitNonce)
     .getFunctionCall();
 
   const configIndex = subFPC.functions[token.address.toString()]?.[call.selector.toString()];
@@ -592,7 +590,7 @@ export async function executeTransferOffchain(
   const rawFPC = SubscriptionFPCContract.at(fpcAddress, wallet);
   const fpc = new SubscriptionFPC(rawFPC);
 
-  // Create an authwitness so the FPC can call transfer_offchain_from on the user's behalf.
+  // Create an authwitness so the FPC can call transfer_in_private_deliver_offchain on the user's behalf.
   // The caller from the token contract's perspective is the FPC.
   const authWitness = await wallet.createAuthWit(fromAddress, { caller: fpcAddress, call });
 

@@ -40,7 +40,7 @@ async function main() {
   const ammFn = AMMContractArtifact.functions.find(f => f.name === 'swap_tokens_for_exact_tokens_from');
   const ammSelector = await FunctionSelector.fromNameAndParameters(ammFn!.name, ammFn!.parameters);
 
-  const transferOffchainFn = TokenContractArtifact.functions.find(f => f.name === 'transfer_offchain_from');
+  const transferOffchainFn = TokenContractArtifact.functions.find(f => f.name === 'transfer_in_private_deliver_offchain');
   const transferOffchainSelector = await FunctionSelector.fromNameAndParameters(
     transferOffchainFn!.name,
     transferOffchainFn!.parameters,
@@ -112,10 +112,10 @@ async function main() {
     .send({ from: deployer, fee: { paymentMethod } });
   console.log('AMM sign_up done!');
 
-  // Sign up transfer_offchain_from on both token contracts
+  // Sign up transfer_in_private_deliver_offchain on both token contracts
   for (const tokenKey of ['gregoCoin', 'gregoCoinPremium'] as const) {
     const tokenAddress = config.contracts[tokenKey];
-    console.log(`Signing up ${tokenKey}.transfer_offchain_from at index 0...`);
+    console.log(`Signing up ${tokenKey}.transfer_in_private_deliver_offchain at index 0...`);
     await fpc.methods
       .sign_up(tokenAddress, transferOffchainSelector, 0, maxUses, maxFee, maxUsers)
       .send({ from: deployer, fee: { paymentMethod } });

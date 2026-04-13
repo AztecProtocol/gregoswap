@@ -251,33 +251,15 @@ pub contract Token {
         );
     }
 
-    #[external("private")]
-    fn transfer_offchain(to: AztecAddress, amount: u128) {
-        let from = self.msg_sender();
-
-        let change = self.internal.subtract_balance(from, amount, INITIAL_TRANSFER_CALL_MAX_NOTES);
-        self.storage.balances.at(from).add(change).deliver(MessageDelivery.OFFCHAIN);
-        self.storage.balances.at(to).add(amount).deliver(MessageDelivery.OFFCHAIN);
-
-        self.emit(Transfer { from, to, amount }).deliver_to(
-            to,
-            MessageDelivery.OFFCHAIN,
-        );
-    }
-
-    /// FPC-friendly variant of `transfer_offchain` that takes the sender explicitly,
-    /// allowing the call to be sponsored (msg_sender will be the FPC, not the user).
-    /// Authwitness ensures the user authorized this exact transfer.
     #[authorize_once("from", "authwit_nonce")]
     #[external("private")]
-    fn transfer_offchain_from(
+    fn transfer_in_private_deliver_offchain(
         from: AztecAddress,
         to: AztecAddress,
         amount: u128,
         authwit_nonce: Field,
     ) {
-        let change = self.internal.subtract_balance(from, amount, INITIAL_TRANSFER_CALL_MAX_NOTES);
-        self.storage.balances.at(from).add(change).deliver(MessageDelivery.OFFCHAIN);
+        self.storage.balances.at(from).sub(amount).deliver(MessageDelivery.OFFCHAIN);
         self.storage.balances.at(to).add(amount).deliver(MessageDelivery.OFFCHAIN);
 
         self.emit(Transfer { from, to, amount }).deliver_to(
