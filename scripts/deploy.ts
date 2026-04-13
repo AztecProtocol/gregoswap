@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { TokenContract } from '@aztec/noir-contracts.js/Token';
+import { TokenContract } from '../contracts/target/Token.ts';
 import { AMMContract } from '../contracts/target/AMM.ts';
 import { AztecAddress } from '@aztec/stdlib/aztec-address';
 import { Fr } from '@aztec/foundation/curves/bn254';

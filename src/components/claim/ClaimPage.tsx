@@ -63,7 +63,7 @@ export function ClaimPage() {
       await claimOffchainTransfer(tokenKey, {
         ciphertext: data.payload.map((s: string) => Fr.fromString(s)),
         recipient: AztecAddress.fromString(data.recipient),
-        tx_hash: data.txHash,
+        tx_hash: Fr.fromString(data.txHash),
         anchor_block_timestamp: BigInt(data.anchorBlockTimestamp),
       });
 

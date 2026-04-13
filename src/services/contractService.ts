@@ -12,7 +12,7 @@ import { FunctionSelector } from '@aztec/aztec.js/abi';
 import { BatchCall, getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
 import { poseidon2Hash } from '@aztec/foundation/crypto/poseidon';
 import type { TxReceipt } from '@aztec/stdlib/tx';
-import type { TokenContract } from '@aztec/noir-contracts.js/Token';
+import type { TokenContract } from '../../contracts/target/Token';
 import type { AMMContract } from '../../contracts/target/AMM';
 import type { ProofOfPasswordContract } from '../../contracts/target/ProofOfPassword';
 import { BigDecimal } from '../utils/bigDecimal';
@@ -53,7 +53,7 @@ export async function registerSwapContracts(
   const contractSalt = Fr.fromString(network.contracts.salt);
 
   // Import contract artifacts
-  const { TokenContract, TokenContractArtifact } = await import('@aztec/noir-contracts.js/Token');
+  const { TokenContract, TokenContractArtifact } = await import('../../contracts/target/Token');
   const { AMMContract, AMMContractArtifact } = await import('../../contracts/target/AMM');
 
   // Determine subscription FPC for sponsored swaps
@@ -180,22 +180,22 @@ export async function registerDripContracts(
   }
 
   // Register subscription FPC if configured and not yet registered
-  if (subFPC) {
-    const subFPCMetadata = metadataResults[1];
-    if (!subFPCMetadata?.result?.instance) {
-      const fpcAddress = AztecAddressClass.fromString(subFPC.address);
-      const secretKey = Fr.fromString(subFPC.secretKey);
-      const instance = await node.getContract(fpcAddress);
-      if (!instance) {
-        console.warn(`Subscription FPC at ${subFPC.address} not found on-chain, skipping`);
-      } else {
-        const { SubscriptionFPCContractArtifact } = await import('@gregojuice/contracts/artifacts/SubscriptionFPC');
-        registrationBatch.push({
-          name: 'registerContract',
-          args: [instance, SubscriptionFPCContractArtifact, secretKey],
-        });
-      }
+  if (!subFPC) {
+    throw new Error('No subscriptionFPC configured for this network');
+  }
+  const subFPCMetadata = metadataResults[1];
+  if (!subFPCMetadata.result.instance) {
+    const fpcAddress = AztecAddressClass.fromString(subFPC.address);
+    const secretKey = Fr.fromString(subFPC.secretKey);
+    const instance = await node.getContract(fpcAddress);
+    if (!instance) {
+      throw new Error(`Subscription FPC at ${subFPC.address} not found on-chain`);
     }
+    const { SubscriptionFPCContractArtifact } = await import('@gregojuice/contracts/artifacts/SubscriptionFPC');
+    registrationBatch.push({
+      name: 'registerContract',
+      args: [instance, SubscriptionFPCContractArtifact, secretKey],
+    });
   }
 
   // Only call batch if there are contracts to register
@@ -515,7 +515,7 @@ export async function executeDrip(
 ): Promise<TxReceipt> {
   const subFPC = network.subscriptionFPC;
   if (!subFPC) {
-    throw new Error('Drip requires subscriptionFPC which is not configured for this network. Use the Send tab to transfer tokens directly.');
+    throw new Error('No subscriptionFPC configured for this network');
   }
 
   const call = await pop.methods.check_password_and_mint(password, recipient).getFunctionCall();
@@ -557,25 +557,63 @@ export interface OffchainMessage {
  * change note, and returns the recipient's offchain messages for link encoding.
  */
 export async function executeTransferOffchain(
+  wallet: Wallet,
+  network: NetworkConfig,
   contracts: SwapContracts,
   tokenKey: 'gregoCoin' | 'gregoCoinPremium',
   fromAddress: AztecAddress,
   recipient: AztecAddress,
   amount: bigint,
 ): Promise<{ receipt: TxReceipt; offchainMessages: OffchainMessage[] }> {
+  const subFPC = network.subscriptionFPC;
+  if (!subFPC) {
+    throw new Error('No subscriptionFPC configured for this network');
+  }
+
   const token = contracts[tokenKey];
 
-  // 1. Send the offchain transfer transaction
-  const { receipt, offchainMessages } = await (token.methods as any)
-    .transfer_offchain(recipient, amount)
-    .send({ from: fromAddress });
+  // Build the FPC-friendly call (transfer_offchain_from takes the sender explicitly +
+  // an authwit_nonce so the wallet can authorize the FPC to dispatch on the user's behalf)
+  const authwitNonce = Fr.random();
+  const call = await token.methods
+    .transfer_offchain_from(fromAddress, recipient, amount, authwitNonce)
+    .getFunctionCall();
 
-  // 2. Self-deliver sender's change note (manual until F-324 lands)
+  const configIndex = subFPC.functions[token.address.toString()]?.[call.selector.toString()];
+  if (configIndex == null) {
+    throw new Error(
+      `No subscription config found for token ${token.address.toString()} selector ${call.selector.toString()}`,
+    );
+  }
+
+  const fpcAddress = AztecAddressClass.fromString(subFPC.address);
+  const { SubscriptionFPCContract } = await import('@gregojuice/contracts/artifacts/SubscriptionFPC');
+  const { SubscriptionFPC } = await import('@gregojuice/contracts/subscription-fpc');
+  const rawFPC = SubscriptionFPCContract.at(fpcAddress, wallet);
+  const fpc = new SubscriptionFPC(rawFPC);
+
+  // Create an authwitness so the FPC can call transfer_offchain_from on the user's behalf.
+  // The caller from the token contract's perspective is the FPC.
+  const authWitness = await wallet.createAuthWit(fromAddress, { caller: fpcAddress, call });
+
+  const subscribed = hasSubscription(subFPC.address, configIndex, fromAddress.toString());
+
+  let txResult: { receipt: TxReceipt; offchainMessages: OffchainMessage[] };
+  if (subscribed) {
+    txResult = await fpc.helpers.sponsor({ call, configIndex, userAddress: fromAddress, authWitnesses: [authWitness] });
+  } else {
+    txResult = await fpc.helpers.subscribe({ call, configIndex, userAddress: fromAddress, authWitnesses: [authWitness] });
+    markSubscribed(subFPC.address, configIndex, fromAddress.toString());
+  }
+
+  const { receipt, offchainMessages } = txResult;
+
+  // Self-deliver sender's change note (manual until F-324 lands)
   const senderMessages = offchainMessages.filter(
     (msg: OffchainMessage) => msg.recipient.equals(fromAddress),
   );
   if (senderMessages.length > 0) {
-    await (token.methods as any)
+    await token.methods
       .offchain_receive(
         senderMessages.map((msg: OffchainMessage) => ({
           ciphertext: msg.payload,
@@ -587,7 +625,7 @@ export async function executeTransferOffchain(
       .simulate({ from: fromAddress });
   }
 
-  // 3. Filter and return recipient's messages for link encoding
+  // Filter and return recipient's messages for link encoding
   const recipientMessages = offchainMessages.filter(
     (msg: OffchainMessage) => msg.recipient.equals(recipient),
   );

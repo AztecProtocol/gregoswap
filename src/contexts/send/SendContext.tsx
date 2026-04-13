@@ -43,7 +43,7 @@ interface SendProviderProps {
 export function SendProvider({ children }: SendProviderProps) {
   const [state, actions] = useSendReducer();
   const { sendOffchain, isLoadingContracts } = useContracts();
-  const { currentAddress, isUsingEmbeddedWallet } = useWallet();
+  const { currentAddress } = useWallet();
   const { activeNetwork } = useNetwork();
 
   const canSend =
@@ -51,7 +51,6 @@ export function SendProvider({ children }: SendProviderProps) {
     parseFloat(state.amount) > 0 &&
     !!state.recipientAddress &&
     !isLoadingContracts &&
-    !isUsingEmbeddedWallet &&
     !!currentAddress;
 
   const executeSend = useCallback(async () => {

@@ -3,7 +3,7 @@
  * Manages contract instances and registration state
  */
 
-import type { TokenContract } from '@aztec/noir-contracts.js/Token';
+import type { TokenContract } from '../../../contracts/target/Token';
 import type { AMMContract } from '../../../contracts/target/AMM';
 import type { ProofOfPasswordContract } from '../../../contracts/target/ProofOfPassword';
 import { createReducerHook, type ActionsFrom } from '../utils';

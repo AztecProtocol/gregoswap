@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ThemeProvider, CssBaseline, Container, Box, Typography, Tabs, Tab } from '@mui/material';
+import { ThemeProvider, CssBaseline, Container, Box, Typography, Tabs, Tab, Snackbar } from '@mui/material';
 import { theme } from './theme';
 import { GregoSwapLogo } from './components/GregoSwapLogo';
 import { WalletChip } from './components/WalletChip';
@@ -17,17 +17,20 @@ import type { AztecAddress } from '@aztec/aztec.js/addresses';
 
 export function App() {
   const [activeTab, setActiveTab] = useState(0);
+  const [addressCopied, setAddressCopied] = useState(false);
   const { disconnectWallet, setCurrentAddress, currentAddress, error: walletError, isLoading: walletLoading } = useWallet();
   const { isOnboardingModalOpen, startOnboarding, resetOnboarding, status: onboardingStatus } = useOnboarding();
 
   const isOnboarded = onboardingStatus === 'completed';
 
-  const handleWalletClick = () => {
-    // If already onboarded, start a new onboarding flow to change wallet
+  const handleWalletClick = async () => {
+    // If connected, copy the address. Otherwise start onboarding.
     if (isOnboarded && currentAddress) {
-      resetOnboarding();
+      await navigator.clipboard.writeText(currentAddress.toString());
+      setAddressCopied(true);
+      return;
     }
-    startOnboarding(); // Start onboarding when clicked from wallet chip
+    startOnboarding();
   };
 
   const handleDisconnect = async () => {
@@ -105,6 +108,12 @@ export function App() {
           isConnected={isOnboarded && currentAddress !== null}
           onClick={handleWalletClick}
           onDisconnect={handleDisconnect}
+        />
+        <Snackbar
+          open={addressCopied}
+          autoHideDuration={2000}
+          onClose={() => setAddressCopied(false)}
+          message="Address copied!"
         />
 
         <Container maxWidth="sm" sx={{ position: 'relative', zIndex: 1 }}>
