@@ -10,6 +10,11 @@ import { useOnboarding } from './contexts/onboarding';
 import { OnboardingModal } from './components/OnboardingModal';
 import { TxNotificationCenter } from '@gregojuice/embedded-wallet/ui';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
+import { lazy, Suspense } from 'react';
+
+const ProfilePanel = lazy(() =>
+  import('./components/ProfilePanel').then(m => ({ default: m.ProfilePanel })),
+);
 
 export function App() {
   const { disconnectWallet, setCurrentAddress, currentAddress, error: walletError, isLoading: walletLoading } = useWallet();
@@ -137,6 +142,13 @@ export function App() {
 
       {/* Transaction Progress Toasts (embedded wallet only) */}
       <TxNotificationCenter account={currentAddress?.toString()} />
+
+      {/* Performance profiling panel — activate with ?profile=1 */}
+      {new URLSearchParams(location.search).has('profile') && (
+        <Suspense fallback={null}>
+          <ProfilePanel />
+        </Suspense>
+      )}
     </ThemeProvider>
   );
 }

@@ -103,6 +103,8 @@ export default defineConfig(({ mode }) => {
       headers: {
         'Cross-Origin-Opener-Policy': 'same-origin',
         'Cross-Origin-Embedder-Policy': 'require-corp',
+        // Required for the JS Self-Profiling API (in-page sampling profiler)
+        'Document-Policy': 'js-profiling',
       },
       fs: {
         allow: [searchForWorkspaceRoot(process.cwd())],
