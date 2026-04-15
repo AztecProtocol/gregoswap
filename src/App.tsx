@@ -12,9 +12,12 @@ import { TxNotificationCenter } from '@gregojuice/embedded-wallet/ui';
 import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import { lazy, Suspense } from 'react';
 
-const ProfilePanel = lazy(() =>
-  import('./components/ProfilePanel').then(m => ({ default: m.ProfilePanel })),
-);
+// Dev-only lazy import so ProfilePanel + its deps (canvas flame chart) are
+// tree-shaken from prod builds. `import.meta.env.DEV` is replaced with the
+// literal boolean at build time; in prod the `?:` picks `null`.
+const ProfilePanel = import.meta.env.DEV
+  ? lazy(() => import('./components/ProfilePanel').then(m => ({ default: m.ProfilePanel })))
+  : null;
 
 export function App() {
   const { disconnectWallet, setCurrentAddress, currentAddress, error: walletError, isLoading: walletLoading } = useWallet();
@@ -143,8 +146,9 @@ export function App() {
       {/* Transaction Progress Toasts (embedded wallet only) */}
       <TxNotificationCenter account={currentAddress?.toString()} />
 
-      {/* Performance profiling panel — activate with ?profile=1 */}
-      {new URLSearchParams(location.search).has('profile') && (
+      {/* Performance profiling panel — dev only (zone.js async-context tracking
+          requires transpiled async/await which we enable only in dev mode). */}
+      {ProfilePanel && (
         <Suspense fallback={null}>
           <ProfilePanel />
         </Suspense>

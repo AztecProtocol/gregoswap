@@ -1,81 +1,63 @@
 /**
- * Fetch + WASM interception for profiling.
+ * Fetch + WASM + simulator + standalone-function interception for profiling.
  *
- * Fetch: patches window.fetch to extract JSON-RPC method names and record timing.
- * WASM:  patches BarretenbergSync/Barretenberg backend.call to decode msgpack
- *        operation names and record timing for every bb.js API call.
+ * All interceptors take the `Profiler` instance directly and use its
+ * `runSpan` method to wrap operations. That routes the work through
+ * `runInSpan` (zone.js), so async context propagates and every captured
+ * span carries the correct `parentId`.
  */
 
-// ─── Callback interface ─────────────────────────────────────────────────────
+import type { Profiler } from './index';
+import { findAncestorSpan } from './context';
 
-export type RecordFn = (
-  name: string,
-  category: 'rpc' | 'wasm' | 'sim' | 'oracle',
-  startAbsolute: number,
-  duration: number,
-  detail?: string,
-  error?: boolean,
-) => void;
-
-export type IsRecording = () => boolean;
+// Categories to skip when re-parenting batched fetches. A batched RPC call
+// is triggered by a setTimeout scheduled inside a `node` method, so it ends
+// up nested under that first node call. Skipping `node` makes the batch
+// record a sibling of the node calls it groups.
+const SKIP_FOR_BATCH_PARENT = new Set(['node' as const, 'rpc' as const]);
 
 // ─── Fetch interceptor ──────────────────────────────────────────────────────
 
-export function installFetchInterceptor(
-  record: RecordFn,
-  isRecording: IsRecording,
-): () => void {
+export function installFetchInterceptor(profiler: Profiler): () => void {
   const original = window.fetch.bind(window);
 
-  window.fetch = async (
+  window.fetch = (
     input: RequestInfo | URL,
     init?: RequestInit,
   ): Promise<Response> => {
-    const recording = isRecording();
-    if (!recording) return original(input, init);
+    if (!profiler.isRecording) return original(input, init);
 
-    const url =
-      typeof input === 'string'
-        ? input
-        : input instanceof URL
-          ? input.href
-          : input.url;
-    const t0 = performance.now();
+    // Only instrument JSON-RPC POST requests. Skip WASM binary downloads,
+    // static assets, etc. — these pollute the profile with huge blobs.
+    if (!init?.body || typeof init.body !== 'string') return original(input, init);
 
-    // Extract JSON-RPC method name(s) from request body
     let method = '';
     let batched = false;
-    if (init?.body && typeof init.body === 'string') {
-      try {
-        const parsed = JSON.parse(init.body);
-        if (Array.isArray(parsed)) {
-          batched = true;
-          method = parsed.map((r: any) => r?.method ?? '?').join(', ');
-        } else if (parsed?.method) {
-          method = parsed.method;
-        }
-      } catch {
-        /* not JSON */
+    try {
+      const parsed = JSON.parse(init.body);
+      if (Array.isArray(parsed)) {
+        batched = true;
+        method = parsed.map((r: any) => r?.method ?? '?').join(', ');
+      } else if (parsed?.method) {
+        method = parsed.method;
       }
+    } catch {
+      return original(input, init);
     }
-    if (!method) {
-      try {
-        method = new URL(url, location.href).pathname;
-      } catch {
-        method = url;
-      }
-    }
+    if (!method) return original(input, init);
 
     const label = batched ? `[batch] ${method}` : method;
 
-    try {
-      const response = await original(input, init);
-      record(label, 'rpc', t0, performance.now() - t0, `${response.status}`);
-      return response;
-    } catch (e) {
-      record(label, 'rpc', t0, performance.now() - t0, 'network error', true);
-      throw e;
-    }
+    // For batched fetches, re-parent above any node ancestors so the batch
+    // is a sibling of the node calls it bundled (rather than nested under
+    // the first one, which is where setTimeout happened to land).
+    const parentOverride = batched
+      ? findAncestorSpan(SKIP_FOR_BATCH_PARENT) ?? null
+      : undefined;
+
+    return profiler.runSpan(label, 'rpc', async () => {
+      return await original(input, init);
+    }, undefined, parentOverride) as Promise<Response>;
   };
 
   return () => {
@@ -122,8 +104,7 @@ function decodeMsgpackOpName(buf: Uint8Array): string | null {
 
 function wrapBackendCall(
   backend: any,
-  record: RecordFn,
-  isRecording: IsRecording,
+  profiler: Profiler,
   isSync: boolean,
 ): () => void {
   if (!backend || typeof backend.call !== 'function' || backend.call.__profiled)
@@ -133,40 +114,25 @@ function wrapBackendCall(
 
   if (isSync) {
     backend.call = function (inputBuffer: Uint8Array) {
-      if (!isRecording()) return original(inputBuffer);
+      if (!profiler.isRecording) return original(inputBuffer);
       const opName = decodeMsgpackOpName(inputBuffer) ?? 'bb_sync';
-      const t0 = performance.now();
-      const result = original(inputBuffer);
-      record(opName, 'wasm', t0, performance.now() - t0);
-      return result;
+      return profiler.runSpan(opName, 'wasm', () => original(inputBuffer));
     };
   } else {
-    backend.call = async function (inputBuffer: Uint8Array) {
-      if (!isRecording()) return original(inputBuffer);
+    backend.call = function (inputBuffer: Uint8Array) {
+      if (!profiler.isRecording) return original(inputBuffer);
       const opName = decodeMsgpackOpName(inputBuffer) ?? 'bb_async';
-      const t0 = performance.now();
-      try {
-        const result = await original(inputBuffer);
-        record(opName, 'wasm', t0, performance.now() - t0);
-        return result;
-      } catch (err) {
-        record(opName, 'wasm', t0, performance.now() - t0, undefined, true);
-        throw err;
-      }
+      return profiler.runSpan(opName, 'wasm', () => original(inputBuffer));
     };
   }
 
   backend.call.__profiled = true;
-  const restore = () => {
+  return () => {
     backend.call = original;
   };
-  return restore;
 }
 
-export async function installWasmInterceptor(
-  record: RecordFn,
-  isRecording: IsRecording,
-): Promise<() => void> {
+export async function installWasmInterceptor(profiler: Profiler): Promise<() => void> {
   const restores: (() => void)[] = [];
 
   try {
@@ -176,26 +142,20 @@ export async function installWasmInterceptor(
 
     // Patch BarretenbergSync (main-thread hashing: poseidon, pedersen, etc.)
     if (BBSync) {
-      // Wrap existing singleton if already initialized
       try {
         const existing = BBSync.getSingleton();
         if (existing?.backend)
-          restores.push(
-            wrapBackendCall(existing.backend, record, isRecording, true),
-          );
+          restores.push(wrapBackendCall(existing.backend, profiler, true));
       } catch {
         /* not yet init'd */
       }
 
-      // Wrap future singletons
       if (BBSync.initSingleton && !BBSync.initSingleton.__profiled) {
         const orig = BBSync.initSingleton.bind(BBSync);
         BBSync.initSingleton = async (...args: any[]) => {
           const inst = await orig(...args);
           if (inst?.backend)
-            restores.push(
-              wrapBackendCall(inst.backend, record, isRecording, true),
-            );
+            restores.push(wrapBackendCall(inst.backend, profiler, true));
           return inst;
         };
         BBSync.initSingleton.__profiled = true;
@@ -210,9 +170,7 @@ export async function installWasmInterceptor(
       try {
         const existing = BB.getSingleton();
         if (existing?.backend)
-          restores.push(
-            wrapBackendCall(existing.backend, record, isRecording, false),
-          );
+          restores.push(wrapBackendCall(existing.backend, profiler, false));
       } catch {
         /* not yet init'd */
       }
@@ -222,9 +180,7 @@ export async function installWasmInterceptor(
         BB.initSingleton = async (...args: any[]) => {
           const inst = await orig(...args);
           if (inst?.backend)
-            restores.push(
-              wrapBackendCall(inst.backend, record, isRecording, false),
-            );
+            restores.push(wrapBackendCall(inst.backend, profiler, false));
           return inst;
         };
         BB.initSingleton.__profiled = true;
@@ -240,54 +196,16 @@ export async function installWasmInterceptor(
   return () => restores.forEach((r) => r());
 }
 
-// ─── Simulator interceptor ──────────────────────────────────────────────────
-// Patches prototype methods on the circuit simulator (ACVM witness generation)
-// reached through the PXE instance — no problematic imports needed.
-
-function wrapProtoMethod(
-  proto: any,
-  method: string,
-  record: RecordFn,
-  isRecording: IsRecording,
-  label: (args: any[]) => string,
-): () => void {
-  const original = proto[method];
-  if (typeof original !== 'function' || original.__profiled) return () => {};
-
-  proto[method] = function (this: any, ...args: any[]) {
-    if (!isRecording()) return original.apply(this, args);
-    const name = label(args);
-    const t0 = performance.now();
-    let result: any;
-    try {
-      result = original.apply(this, args);
-    } catch (e) {
-      record(name, 'sim', t0, performance.now() - t0, undefined, true);
-      throw e;
-    }
-    if (result && typeof result.then === 'function') {
-      return result.then(
-        (v: any) => { record(name, 'sim', t0, performance.now() - t0); return v; },
-        (e: any) => { record(name, 'sim', t0, performance.now() - t0, undefined, true); throw e; },
-      );
-    }
-    record(name, 'sim', t0, performance.now() - t0);
-    return result;
-  };
-  proto[method].__profiled = true;
-  return () => { proto[method] = original; };
-}
+// ─── Simulator + oracle callback interceptor ───────────────────────────────
 
 /**
  * Wrap every method on an ACIRCallback (oracle) object with profiling.
- * The callback is Record<string, (...args) => Promise<...>>.
- * Each key is an oracle function name (getNotes, getPublicDataTreeWitness, etc.).
+ * Each key is an oracle function name (getNotes, getPublicDataTreeWitness, ...).
+ *
+ * We return a NEW object with wrapped methods — the original callback is
+ * left untouched (the ACVM only sees our wrapped version).
  */
-function wrapOracleCallback(
-  callback: any,
-  record: RecordFn,
-  isRecording: IsRecording,
-): any {
+function wrapOracleCallback(callback: any, profiler: Profiler): any {
   if (!callback || typeof callback !== 'object') return callback;
 
   const wrapped: any = {};
@@ -297,17 +215,9 @@ function wrapOracleCallback(
       wrapped[key] = original;
       continue;
     }
-    wrapped[key] = async function (...args: any[]) {
-      if (!isRecording()) return original.apply(this, args);
-      const t0 = performance.now();
-      try {
-        const result = await original.apply(this, args);
-        record(key, 'oracle', t0, performance.now() - t0);
-        return result;
-      } catch (e) {
-        record(key, 'oracle', t0, performance.now() - t0, undefined, true);
-        throw e;
-      }
+    wrapped[key] = function (...args: any[]) {
+      if (!profiler.isRecording) return original.apply(this, args);
+      return profiler.runSpan(key, 'oracle', () => original.apply(this, args));
     };
   }
   return wrapped;
@@ -320,14 +230,12 @@ function wrapOracleCallback(
  *
  * Patches:
  *   - executeUserCircuit: records the circuit execution + wraps the oracle
- *     callback so every oracle call (getNotes, getPublicDataTreeWitness, etc.)
- *     gets its own span.
+ *     callback so every oracle call gets its own span.
  *   - executeProtocolCircuit: records protocol circuit execution.
  */
 export function installSimulatorInterceptorFromPXE(
   pxe: any,
-  record: RecordFn,
-  isRecording: IsRecording,
+  profiler: Profiler,
 ): () => void {
   const restores: (() => void)[] = [];
 
@@ -337,53 +245,37 @@ export function installSimulatorInterceptorFromPXE(
   const simProto = Object.getPrototypeOf(sim);
   if (!simProto) return () => {};
 
-  // executeUserCircuit(input, artifact, callback)
-  // We wrap the method AND the oracle callback (3rd arg).
   if (typeof simProto.executeUserCircuit === 'function' && !simProto.executeUserCircuit.__profiled) {
     const original = simProto.executeUserCircuit;
-    simProto.executeUserCircuit = async function (this: any, input: any, artifact: any, callback: any, ...rest: any[]) {
-      if (!isRecording()) return original.call(this, input, artifact, callback, ...rest);
-
+    simProto.executeUserCircuit = function (
+      this: any, input: any, artifact: any, callback: any, ...rest: any[]
+    ) {
+      if (!profiler.isRecording) return original.call(this, input, artifact, callback, ...rest);
       const name = artifact?.name ?? artifact?.functionName ?? 'circuit';
       const contract = artifact?.contractName ?? '';
       const label = contract ? `${contract}:${name}` : name;
-      const wrappedCallback = wrapOracleCallback(callback, record, isRecording);
-
-      const t0 = performance.now();
-      try {
-        const result = await original.call(this, input, artifact, wrappedCallback, ...rest);
-        record(label, 'sim', t0, performance.now() - t0);
-        return result;
-      } catch (e) {
-        record(label, 'sim', t0, performance.now() - t0, undefined, true);
-        throw e;
-      }
+      const wrappedCallback = wrapOracleCallback(callback, profiler);
+      return profiler.runSpan(label, 'sim', () =>
+        original.call(this, input, artifact, wrappedCallback, ...rest),
+      );
     };
     simProto.executeUserCircuit.__profiled = true;
     restores.push(() => { simProto.executeUserCircuit = original; });
   }
 
-  // executeProtocolCircuit(input, artifact, callback)
   if (typeof simProto.executeProtocolCircuit === 'function' && !simProto.executeProtocolCircuit.__profiled) {
     const original = simProto.executeProtocolCircuit;
-    simProto.executeProtocolCircuit = async function (this: any, input: any, artifact: any, callback: any, ...rest: any[]) {
-      if (!isRecording()) return original.call(this, input, artifact, callback, ...rest);
-
+    simProto.executeProtocolCircuit = function (
+      this: any, input: any, artifact: any, callback: any, ...rest: any[]
+    ) {
+      if (!profiler.isRecording) return original.call(this, input, artifact, callback, ...rest);
       const label = artifact?.name ?? 'protocol_circuit';
-      // Protocol circuits also get oracle callback wrapping (for ForeignCallHandler)
       const wrappedCallback = callback && typeof callback === 'object'
-        ? wrapOracleCallback(callback, record, isRecording)
+        ? wrapOracleCallback(callback, profiler)
         : callback;
-
-      const t0 = performance.now();
-      try {
-        const result = await original.call(this, input, artifact, wrappedCallback, ...rest);
-        record(label, 'sim', t0, performance.now() - t0);
-        return result;
-      } catch (e) {
-        record(label, 'sim', t0, performance.now() - t0, undefined, true);
-        throw e;
-      }
+      return profiler.runSpan(label, 'sim', () =>
+        original.call(this, input, artifact, wrappedCallback, ...rest),
+      );
     };
     simProto.executeProtocolCircuit.__profiled = true;
     restores.push(() => { simProto.executeProtocolCircuit = original; });
@@ -391,3 +283,11 @@ export function installSimulatorInterceptorFromPXE(
 
   return () => restores.forEach((r) => r());
 }
+
+// Note: standalone functions imported via `import { foo } from 'bar'`
+// (e.g. `simulateViaNode`, `waitForTx`) aren't captured. ESM imports are
+// live bindings to the exporter's local variable, not the namespace object,
+// so runtime monkey-patching of the namespace doesn't affect existing
+// imports in other modules. The work these functions do is still visible
+// via the interceptors that capture their internals (RPC/fetch for
+// `simulateViaNode`, `node.getTxReceipt` polls for `waitForTx`).

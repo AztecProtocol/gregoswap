@@ -93,18 +93,28 @@ const chunkSizeValidator = (limits: ChunkSizeLimit[]): Plugin => {
 };
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+
+  // Profiling (zone.js-based async context tracking) runs only in dev.
+  // V8's "fast await" optimization bypasses user-space Promise.prototype.then
+  // for native `async function` bodies, breaking zone.js propagation. By
+  // lowering the esbuild/SWC target to es2016 in dev, we force async/await
+  // to be transpiled to Promise-based state machines that DO go through
+  // user-level .then() — which zone.js can hook. Prod keeps esnext for speed.
+  const isDev = command === 'serve';
+  const esTarget = isDev ? 'es2016' : 'esnext';
+
   return {
     base: './',
     logLevel: process.env.CI ? 'error' : undefined,
+    esbuild: { target: esTarget },
+    build: { target: esTarget },
     server: {
       // Headers needed for bb WASM to work in multithreaded mode
       headers: {
         'Cross-Origin-Opener-Policy': 'same-origin',
         'Cross-Origin-Embedder-Policy': 'require-corp',
-        // Required for the JS Self-Profiling API (in-page sampling profiler)
-        'Document-Policy': 'js-profiling',
       },
       fs: {
         allow: [searchForWorkspaceRoot(process.cwd())],
@@ -113,9 +123,14 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: {
       exclude: ['@aztec/noir-acvm_js', '@aztec/noir-noirc_abi', '@aztec/bb.js'],
       include: ['@gregojuice/embedded-wallet/ui'],
+      esbuildOptions: { target: esTarget },
     },
     plugins: [
-      react({ jsxImportSource: '@emotion/react' }),
+      react({
+        jsxImportSource: '@emotion/react',
+        // Match esbuild target in dev so async/await gets transpiled for zone.js.
+        ...(isDev ? { devTarget: 'es2016' as const } : {}),
+      }),
       nodePolyfillsFix({ include: ['buffer', 'path'] }),
       chunkSizeValidator([
         {

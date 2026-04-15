@@ -4,43 +4,45 @@
  * Instruments the embedded wallet, PXE, node client, fetch, and WASM from
  * the outside — no wallet code changes needed.
  *
+ * Parent attribution uses async-context propagation via zone.js (see
+ * `context.ts`). Every span carries an explicit `parentId` based on the
+ * actual causal chain, so concurrent async operations never get confused
+ * with nested ones — no timing heuristics.
+ *
  * Usage:
- *   await profiler.install();               // global interceptors (fetch, WASM)
+ *   await profiler.install();               // global interceptors
  *   profiler.instrumentWallet(wallet);       // wrap wallet + its PXE + node
  *   profiler.start('sendTx');
  *   // ... perform operation ...
  *   const report = profiler.stop();
  */
 
-import { installFetchInterceptor, installWasmInterceptor, installSimulatorInterceptorFromPXE } from './interceptors';
+import {
+  installFetchInterceptor,
+  installWasmInterceptor,
+  installSimulatorInterceptorFromPXE,
+} from './interceptors';
+import { currentSpan, runInSpan, zoneAvailable, bindCurrentZone, type SpanContext } from './context';
+import type { Category, ProfileRecord, ProfileReport } from './types';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-export type Category = 'wallet' | 'pxe' | 'sim' | 'oracle' | 'node' | 'rpc' | 'wasm';
-
-export interface ProfileRecord {
-  name: string;
-  category: Category;
-  start: number;    // ms from recording origin
-  duration: number; // ms
-  detail?: string;
-  error?: boolean;
-}
-
-export interface ProfileReport {
-  name: string;
-  startedAt: number;    // Date.now() at recording start
-  durationMs: number;
-  records: ProfileRecord[];
-}
+export type { Category, ProfileRecord, ProfileReport } from './types';
 
 // ─── Method wrapping ─────────────────────────────────────────────────────────
 
-// Methods to skip — internal noise, getters, or things that break if wrapped.
+// Methods to skip — internal plumbing, getters, or things that break if wrapped.
 const SKIP = new Set([
-  'constructor', 'toString', 'toJSON', 'valueOf',
-  'then',       // wrapping 'then' would break Promise detection
-  'log',        // logger getter
+  // JS fundamentals
+  'constructor', 'toString', 'toJSON', 'valueOf', 'hasOwnProperty',
+  'isPrototypeOf', 'propertyIsEnumerable',
+  'then',          // wrapping 'then' would break Promise detection
+  'catch', 'finally',
+  // Logging
+  'log', 'warn', 'error', 'debug', 'info', 'verbose', 'trace',
+  // Lifecycle (often called during init, not during profiled operations)
+  'dispose', 'destroy',
+  // Event emitter
+  'on', 'off', 'once', 'emit', 'addListener', 'removeListener',
+  'addEventListener', 'removeEventListener',
 ]);
 
 /**
@@ -73,6 +75,7 @@ function wrapAllMethods(
 ): () => void {
   const restores: (() => void)[] = [];
   const methods = collectMethods(target);
+  const wrappedNames: string[] = [];
 
   for (const name of methods) {
     const original = target[name];
@@ -80,34 +83,26 @@ function wrapAllMethods(
 
     const wrapped = function (this: any, ...args: any[]) {
       if (!profiler.isRecording) return original.apply(this, args);
-      const t0 = performance.now();
-      let result: any;
-      try {
-        result = original.apply(this, args);
-      } catch (e) {
-        profiler.record(name, category, t0, performance.now() - t0, undefined, true);
-        throw e;
-      }
-      if (result && typeof result.then === 'function') {
-        return result.then(
-          (v: any) => {
-            profiler.record(name, category, t0, performance.now() - t0);
-            return v;
-          },
-          (e: any) => {
-            profiler.record(name, category, t0, performance.now() - t0, undefined, true);
-            throw e;
-          },
-        );
-      }
-      profiler.record(name, category, t0, performance.now() - t0);
-      return result;
+      // Bind any callback-like arguments to the current zone so that custom
+      // queues / schedulers that call them later don't lose async context.
+      // (Zone.js handles Promise/setTimeout/addEventListener natively, but
+      // user-space callback patterns like SerialQueue.put need this.)
+      const boundArgs = args.map(a =>
+        typeof a === 'function' && !(a as any).__zoneBound ? bindCurrentZone(a) : a,
+      );
+      return profiler.runSpan(name, category, () => original.apply(this, boundArgs));
     };
     (wrapped as any).__profiled = true;
-    target[name] = wrapped;
-    restores.push(() => { target[name] = original; });
+    try {
+      target[name] = wrapped;
+      wrappedNames.push(name);
+      restores.push(() => { target[name] = original; });
+    } catch (e) {
+      console.warn(`[profiler] Could not wrap ${category}.${name}:`, e);
+    }
   }
 
+  console.info(`[profiler] wrapped ${category} (${wrappedNames.length} methods):`, wrappedNames.slice(0, 10).join(', ') + (wrappedNames.length > 10 ? ', ...' : ''));
   return () => restores.forEach(r => r());
 }
 
@@ -121,12 +116,25 @@ class Profiler {
   private _records: ProfileRecord[] = [];
   private _cleanups: (() => void)[] = [];
   private _installed = false;
+  private _installPromise: Promise<void> | undefined;
+  private _instrumentedWallets = new WeakSet<object>();
+  /** Generation counter — incremented on each start() so leaked zones from a
+   *  previous recording can't pollute the current one, and spans that started
+   *  during the current recording can still finalize after stop(). */
+  private _generation = 0;
 
   get isRecording() { return this._recording; }
   get isInstalled() { return this._installed; }
 
-  /** Push a completed record. Called by interceptors and method wrappers. */
+  /**
+   * Push a completed record. Called by interceptors and method wrappers.
+   * Accepts records from the given generation even after stop(), so spans
+   * whose promise resolves after stop() still get their duration recorded.
+   */
   record(
+    generation: number,
+    id: string,
+    parentId: string | null,
     name: string,
     category: Category,
     startAbsolute: number,
@@ -134,8 +142,10 @@ class Profiler {
     detail?: string,
     error?: boolean,
   ) {
-    if (!this._recording) return;
+    if (generation !== this._generation) return;
     this._records.push({
+      id,
+      parentId,
       name,
       category,
       start: startAbsolute - this._origin,
@@ -145,32 +155,122 @@ class Profiler {
     });
   }
 
-  /** Install global interceptors (fetch, bb.js WASM). Call once, before wallet creation ideally. */
-  async install() {
-    if (this._installed) return;
-    const recFn = this.record.bind(this);
-    const isRec = () => this._recording;
-    this._cleanups.push(installFetchInterceptor(recFn, isRec));
-    this._cleanups.push(await installWasmInterceptor(recFn, isRec));
-    this._installed = true;
+  /**
+   * Run `fn` as a profiled span. Enters a new zone carrying the span
+   * context so any nested async operations can discover this span as
+   * their parent via `currentSpan()`.
+   *
+   * @param parentOverride - If provided, used as the span's parent instead
+   *   of whatever `currentSpan()` returns. The new zone is still forked
+   *   from `Zone.current` (so downstream callbacks in it see OUR new span),
+   *   only the recorded `parentId` is changed. Useful for re-parenting
+   *   batched fetches out from under the node call that happened to schedule
+   *   the batch's setTimeout.
+   */
+  runSpan<T>(
+    name: string,
+    category: Category,
+    fn: () => T | Promise<T>,
+    detail?: string,
+    parentOverride?: SpanContext | null,
+  ): T | Promise<T> {
+    if (!this._recording) return fn();
+
+    const generation = this._generation;
+    const parent = parentOverride !== undefined ? parentOverride : currentSpan();
+    const span: SpanContext = {
+      id: crypto.randomUUID(),
+      parentId: parent?.id ?? null,
+      name,
+      category,
+    };
+    const t0 = performance.now();
+
+    const finalize = (error?: boolean) => {
+      this.record(generation, span.id, span.parentId, name, category, t0, performance.now() - t0, detail, error);
+    };
+
+    return runInSpan(span, () => {
+      let result: T | Promise<T>;
+      try {
+        result = fn();
+      } catch (e) {
+        finalize(true);
+        throw e;
+      }
+      if (result && typeof (result as any).then === 'function') {
+        return (result as Promise<T>).then(
+          v => { finalize(); return v; },
+          e => { finalize(true); throw e; },
+        );
+      }
+      finalize();
+      return result;
+    });
   }
 
-  /** Wrap a wallet instance + its internal PXE + node. Call once per wallet. */
-  instrumentWallet(wallet: any) {
-    this._cleanups.push(wrapAllMethods(wallet, 'wallet', this));
+  /** Install global interceptors (fetch, bb.js WASM, standalone fns). Call once before wallet creation. */
+  async install() {
+    if (this._installed) return this._installPromise;
+    // Set the flag BEFORE any await to prevent concurrent double-install.
+    this._installed = true;
+    this._installPromise = (async () => {
+      this._cleanups.push(installFetchInterceptor(this));
+      this._cleanups.push(await installWasmInterceptor(this));
+    })();
+    return this._installPromise;
+  }
 
-    const pxe = wallet.pxe;
-    if (pxe) {
-      this._cleanups.push(wrapAllMethods(pxe, 'pxe', this));
-      // Patch circuit simulator prototypes (ACVM witness generation)
-      const recFn = this.record.bind(this);
-      const isRec = () => this._recording;
-      this._cleanups.push(installSimulatorInterceptorFromPXE(pxe, recFn, isRec));
-    }
+  /**
+   * Manually instrument a code block. Convenience wrapper around `runSpan`.
+   * @example
+   *   await profiler.span('myOperation', 'wallet', async () => { ... });
+   */
+  span<T>(name: string, category: Category, fn: () => T | Promise<T>): T | Promise<T> {
+    return this.runSpan(name, category, fn);
+  }
+
+  /** Wrap a wallet instance + its internal PXE + node + PXE stores. Call once per wallet. */
+  instrumentWallet(wallet: any) {
+    if (this._instrumentedWallets.has(wallet)) return;
+    this._instrumentedWallets.add(wallet);
+
+    const wrapped = new Set<any>();
+
+    wrapped.add(wallet);
+    this._cleanups.push(wrapAllMethods(wallet, 'wallet', this));
 
     const node = wallet.aztecNode;
     if (node) {
+      wrapped.add(node);
       this._cleanups.push(wrapAllMethods(node, 'node', this));
+    }
+
+    const pxe = wallet.pxe;
+    if (pxe) {
+      wrapped.add(pxe);
+      this._cleanups.push(wrapAllMethods(pxe, 'pxe', this));
+
+      if (pxe.simulator) wrapped.add(pxe.simulator);
+      this._cleanups.push(installSimulatorInterceptorFromPXE(pxe, this));
+
+      this.instrumentPxeInternals(pxe, wrapped);
+    }
+  }
+
+  /** Walk PXE properties and wrap methods on internal services/stores. */
+  private instrumentPxeInternals(pxe: any, alreadyWrapped: Set<any>) {
+    for (const key of Object.getOwnPropertyNames(pxe)) {
+      if (key.startsWith('_') || key === 'log') continue;
+      let value: any;
+      try { value = pxe[key]; } catch { continue; }
+      if (!value || typeof value !== 'object' || alreadyWrapped.has(value)) continue;
+
+      const methods = collectMethods(value);
+      if (methods.length === 0) continue;
+
+      alreadyWrapped.add(value);
+      this._cleanups.push(wrapAllMethods(value, 'store', this));
     }
   }
 
@@ -180,8 +280,11 @@ class Profiler {
     this._origin = performance.now();
     this._startedAt = Date.now();
     this._records = [];
+    this._generation++;
     this._recording = true;
-    console.info(`[profiler] Started: "${name}"`);
+    console.info(
+      `[profiler] Started: "${name}" — zone tracking: ${zoneAvailable() ? 'on' : 'OFF (every span will be a root)'}`,
+    );
   }
 
   stop(): ProfileReport {
@@ -190,49 +293,17 @@ class Profiler {
     }
     this._recording = false;
     const durationMs = performance.now() - this._origin;
-    const records = this.deduplicateBatchedCalls([...this._records]);
     const report: ProfileReport = {
       name: this._name,
       startedAt: this._startedAt,
       durationMs,
-      records,
+      records: [...this._records],
     };
     console.info(
       `[profiler] Stopped: "${this._name}" — ${(durationMs / 1000).toFixed(2)}s, ` +
       `${report.records.length} spans`,
     );
     return report;
-  }
-
-  /**
-   * When the node client batches multiple calls into one fetch, we capture
-   * both the individual node method spans AND the batch rpc span — same
-   * timing, redundant visual noise. Remove the individual node/rpc records
-   * that are covered by a batch.
-   */
-  private deduplicateBatchedCalls(records: ProfileRecord[]): ProfileRecord[] {
-    const batches = records.filter(
-      r => r.category === 'rpc' && r.name.startsWith('[batch]'),
-    );
-    if (batches.length === 0) return records;
-
-    return records.filter(r => {
-      // Only deduplicate node-level and individual rpc records
-      if (r.category !== 'node' && r.category !== 'rpc') return true;
-      // Keep batch records themselves
-      if (r.name.startsWith('[batch]')) return true;
-
-      const rEnd = r.start + r.duration;
-
-      for (const batch of batches) {
-        const batchEnd = batch.start + batch.duration;
-        // Check timing overlap (the node call and batch should overlap)
-        if (batch.start > rEnd || batchEnd < r.start) continue;
-        // Check if the batch label mentions this method name
-        if (batch.name.includes(r.name)) return false;
-      }
-      return true;
-    });
   }
 
   download(report: ProfileReport) {
@@ -253,3 +324,4 @@ class Profiler {
 }
 
 export const profiler = new Profiler();
+export type { Profiler };

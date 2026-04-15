@@ -48,7 +48,8 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-dropzone": "^14.3.5",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "zone.js": "^0.16.1"
   },
   "devDependencies": {
     "@aztec/wallets": "v4.2.0-nightly.20260412",
