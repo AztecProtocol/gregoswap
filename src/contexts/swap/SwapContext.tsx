@@ -214,7 +214,7 @@ export function SwapProvider({ children }: SwapProviderProps) {
         }
       }
     },
-    [state.exchangeRate, actions]
+    [state.exchangeRate, actions],
   );
 
   const setToAmount = useCallback(
@@ -230,7 +230,7 @@ export function SwapProvider({ children }: SwapProviderProps) {
         }
       }
     },
-    [state.exchangeRate, actions]
+    [state.exchangeRate, actions],
   );
 
   // Computed values
