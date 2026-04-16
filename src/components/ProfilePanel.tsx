@@ -371,16 +371,18 @@ function WaterfallChart({ report, minDuration }: { report: ProfileReport; minDur
       const labelX = 4 + indent;
       const cy = y + ROW_H / 2;
 
-      // Collapse triangle
+      // Expand/collapse triangle — bright so it's clearly clickable.
       if (item.hasChildren) {
         const isExp = expanded.has(item.nodeId);
-        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.fillStyle = isExp ? 'rgba(212,255,40,0.85)' : 'rgba(255,255,255,0.75)';
         ctx.beginPath();
         if (isExp) {
+          // ▼ expanded
           ctx.moveTo(labelX, cy - 3);
           ctx.lineTo(labelX + 8, cy - 3);
           ctx.lineTo(labelX + 4, cy + 4);
         } else {
+          // ▶ collapsed
           ctx.moveTo(labelX, cy - 4);
           ctx.lineTo(labelX, cy + 4);
           ctx.lineTo(labelX + 7, cy);
@@ -471,13 +473,30 @@ function WaterfallChart({ report, minDuration }: { report: ProfileReport; minDur
       ctx.fillRect(x, y, w, ROW_H - 1);
       ctx.globalAlpha = 1;
 
+      // Expand indicator on the bar: small ▶/▼ at the left edge for expandable spans.
+      if (item.hasChildren && w > 12) {
+        const isExp = expanded.has(item.nodeId);
+        const ix = Math.max(0, x) + 3;
+        const iy = y + ROW_H / 2;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.beginPath();
+        if (isExp) {
+          ctx.moveTo(ix, iy - 2); ctx.lineTo(ix + 5, iy - 2); ctx.lineTo(ix + 2.5, iy + 3);
+        } else {
+          ctx.moveTo(ix, iy - 3); ctx.lineTo(ix, iy + 3); ctx.lineTo(ix + 4, iy);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+
       if (w > 50) {
+        const textOffset = item.hasChildren ? 10 : 3;
         ctx.fillStyle = 'rgba(0,0,0,0.85)';
         ctx.save();
         ctx.beginPath();
-        ctx.rect(Math.max(0, x) + 2, y, Math.min(chartViewportW, x + w) - Math.max(0, x) - 4, ROW_H);
+        ctx.rect(Math.max(0, x) + textOffset, y, Math.min(chartViewportW, x + w) - Math.max(0, x) - textOffset - 2, ROW_H);
         ctx.clip();
-        ctx.fillText(`${r.name} ${fmt(r.duration)}`, Math.max(0, x) + 3, y + ROW_H - 6);
+        ctx.fillText(`${r.name} ${fmt(r.duration)}`, Math.max(0, x) + textOffset, y + ROW_H - 6);
         ctx.restore();
       }
     }
