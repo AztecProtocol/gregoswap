@@ -51,6 +51,9 @@
     "zod": "^3.23.8",
     "zone.js": "^0.16.1"
   },
+  "resolutions": {
+    "@aztec/pxe": "patch:@aztec/pxe@npm%3A4.3.0-nightly.20260416#~/.yarn/patches/@aztec-pxe-npm-4.3.0-nightly.20260416-b01dc128ea.patch"
+  },
   "devDependencies": {
     "@aztec/wallets": "v4.3.0-nightly.20260416",
     "@eslint/js": "^9.18.0",

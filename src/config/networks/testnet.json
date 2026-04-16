@@ -15,5 +15,17 @@
   "deployer": {
     "address": "0x12952c3d8a4116782ee85b93c634afbd4cdf2beabedd8258e89737616c269c33"
   },
-  "deployedAt": "2026-04-16T07:16:45.008Z"
+  "deployedAt": "2026-04-16T07:16:45.008Z",
+  "subscriptionFPC": {
+    "address": "0x029f91316f06e4d46e1d77b831a394dbe01676480e9114403838b8df944ca043",
+    "secretKey": "0x2bd6014457e941f1ee656a5824cd6016289acfbd708a9019860284c898c9461c",
+    "functions": {
+      "0x0cc4ceb7cf7cc514ea8fbc5dc7866bedfca6d42bbe4c20a4ad16f4ecb21d4c84": {
+        "0xa539bd29": 0
+      },
+      "0x181b971d54d29179cf25b3b69f79b028ea991fbf97cc8d4065d64bc53018932a": {
+        "0xfd228669": 0
+      }
+    }
+  }
 }
