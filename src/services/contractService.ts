@@ -545,7 +545,6 @@ export async function executeDrip(
  * change note, and returns the recipient's offchain messages for link encoding.
  */
 export async function executeTransferOffchain(
-  wallet: Wallet,
   network: NetworkConfig,
   contracts: SwapContracts,
   tokenKey: 'gregoCoin' | 'gregoCoinPremium',
@@ -557,6 +556,8 @@ export async function executeTransferOffchain(
   if (!subFPC) {
     throw new Error('No subscriptionFPC configured for this network');
   }
+
+  const fpc = contracts.fpc;
 
   const token = contracts[tokenKey];
 
@@ -571,12 +572,6 @@ export async function executeTransferOffchain(
       `No subscription config found for token ${token.address.toString()} selector ${call.selector.toString()}`,
     );
   }
-
-  const fpcAddress = AztecAddressClass.fromString(subFPC.address);
-  const { SubscriptionFPCContract } = await import('@gregojuice/contracts/artifacts/SubscriptionFPC');
-  const { SubscriptionFPC } = await import('@gregojuice/contracts/subscription-fpc');
-  const rawFPC = SubscriptionFPCContract.at(fpcAddress, wallet);
-  const fpc = new SubscriptionFPC(rawFPC);
 
   const subscribed = hasSubscription(subFPC.address, configIndex, fromAddress.toString());
 

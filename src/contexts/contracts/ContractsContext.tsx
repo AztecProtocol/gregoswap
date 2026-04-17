@@ -14,6 +14,7 @@ import { useWallet } from '../wallet';
 import { useNetwork } from '../network';
 import * as contractService from '../../services/contractService';
 import { useContractsReducer } from './reducer';
+import { stat } from 'fs';
 
 interface ContractsContextType {
   isLoadingContracts: boolean;
@@ -31,8 +32,15 @@ interface ContractsContextType {
   fetchBalances: () => Promise<[bigint, bigint]>;
   simulateOnboardingQueries: () => Promise<[number, bigint, bigint]>;
   drip: (password: string, recipient: AztecAddress) => Promise<TxReceipt>;
-  sendOffchain: (tokenKey: 'gregoCoin' | 'gregoCoinPremium', recipient: AztecAddress, amount: bigint) => Promise<{ receipt: TxReceipt; offchainMessages: OffchainMessage[] }>;
-  claimOffchainTransfer: (tokenKey: 'gregoCoin' | 'gregoCoinPremium', message: { ciphertext: Fr[]; recipient: AztecAddress; tx_hash: Fr; anchor_block_timestamp: bigint }) => Promise<void>;
+  sendOffchain: (
+    tokenKey: 'gregoCoin' | 'gregoCoinPremium',
+    recipient: AztecAddress,
+    amount: bigint,
+  ) => Promise<{ receipt: TxReceipt; offchainMessages: OffchainMessage[] }>;
+  claimOffchainTransfer: (
+    tokenKey: 'gregoCoin' | 'gregoCoinPremium',
+    message: { ciphertext: Fr[]; recipient: AztecAddress; tx_hash: Fr; anchor_block_timestamp: bigint },
+  ) => Promise<void>;
 }
 
 const ContractsContext = createContext<ContractsContextType | undefined>(undefined);
@@ -243,42 +251,48 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
   );
 
   // Execute offchain transfer (send with link)
-  const sendOffchain = useCallback(async (
-    tokenKey: 'gregoCoin' | 'gregoCoinPremium',
-    recipient: AztecAddress,
-    amount: bigint,
-  ) => {
-    if (!wallet || !currentAddress || !state.contracts.gregoCoin || !state.contracts.gregoCoinPremium || !state.contracts.amm) {
-      throw new Error('Contracts not initialized');
-    }
-    return contractService.executeTransferOffchain(
-      wallet,
-      activeNetwork,
-      {
-        gregoCoin: state.contracts.gregoCoin,
-        gregoCoinPremium: state.contracts.gregoCoinPremium,
-        amm: state.contracts.amm,
-      },
-      tokenKey,
-      currentAddress,
-      recipient,
-      amount,
-    );
-  }, [wallet, activeNetwork, currentAddress, state.contracts]);
+  const sendOffchain = useCallback(
+    async (tokenKey: 'gregoCoin' | 'gregoCoinPremium', recipient: AztecAddress, amount: bigint) => {
+      if (
+        !wallet ||
+        !currentAddress ||
+        !state.contracts.gregoCoin ||
+        !state.contracts.gregoCoinPremium ||
+        !state.contracts.amm
+      ) {
+        throw new Error('Contracts not initialized');
+      }
+      return contractService.executeTransferOffchain(
+        activeNetwork,
+        {
+          gregoCoin: state.contracts.gregoCoin,
+          gregoCoinPremium: state.contracts.gregoCoinPremium,
+          amm: state.contracts.amm,
+          fpc: state.contracts.fpc,
+        },
+        tokenKey,
+        currentAddress,
+        recipient,
+        amount,
+      );
+    },
+    [wallet, activeNetwork, currentAddress, state.contracts],
+  );
 
   // Claim an offchain transfer via offchain_receive
-  const claimOffchainTransfer = useCallback(async (
-    tokenKey: 'gregoCoin' | 'gregoCoinPremium',
-    message: { ciphertext: Fr[]; recipient: AztecAddress; tx_hash: Fr; anchor_block_timestamp: bigint },
-  ) => {
-    if (!wallet || !currentAddress || !state.contracts.gregoCoin || !state.contracts.gregoCoinPremium) {
-      throw new Error('Contracts not initialized');
-    }
-    const token = tokenKey === 'gregoCoin' ? state.contracts.gregoCoin : state.contracts.gregoCoinPremium;
-    await token.methods
-      .offchain_receive([message])
-      .simulate({ from: currentAddress });
-  }, [wallet, currentAddress, state.contracts]);
+  const claimOffchainTransfer = useCallback(
+    async (
+      tokenKey: 'gregoCoin' | 'gregoCoinPremium',
+      message: { ciphertext: Fr[]; recipient: AztecAddress; tx_hash: Fr; anchor_block_timestamp: bigint },
+    ) => {
+      if (!wallet || !currentAddress || !state.contracts.gregoCoin || !state.contracts.gregoCoinPremium) {
+        throw new Error('Contracts not initialized');
+      }
+      const token = tokenKey === 'gregoCoin' ? state.contracts.gregoCoin : state.contracts.gregoCoinPremium;
+      await token.methods.offchain_receive([message]).simulate({ from: currentAddress });
+    },
+    [wallet, currentAddress, state.contracts],
+  );
 
   // Initialize contracts for embedded wallet
   useEffect(() => {
