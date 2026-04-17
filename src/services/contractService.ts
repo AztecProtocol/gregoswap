@@ -9,13 +9,13 @@ import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { AztecAddress as AztecAddressClass } from '@aztec/aztec.js/addresses';
 import { Fr } from '@aztec/aztec.js/fields';
 import { FunctionSelector } from '@aztec/aztec.js/abi';
-import { BatchCall, getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
+import { BatchCall, getContractInstanceFromInstantiationParams, type OffchainMessage } from '@aztec/aztec.js/contracts';
 import { poseidon2Hash } from '@aztec/foundation/crypto/poseidon';
 import { type FunctionCall, decodeFromAbi } from '@aztec/stdlib/abi';
 import { ExecutionPayload } from '@aztec/stdlib/tx';
 import { UtilityExecutionResult } from '@aztec/stdlib/tx';
 import type { TxReceipt } from '@aztec/stdlib/tx';
-import type { TokenContract } from '@aztec/noir-contracts.js/Token';
+import type { TokenContract } from '../../contracts/target/Token';
 import type { AMMContract } from '../../contracts/target/AMM';
 import type { ProofOfPasswordContract } from '../../contracts/target/ProofOfPassword';
 import { SubscriptionFPC } from '@gregojuice/contracts/subscription-fpc';
@@ -59,7 +59,7 @@ export async function registerSwapContracts(
   const contractSalt = Fr.fromString(network.contracts.salt);
 
   // Import contract artifacts
-  const { TokenContract, TokenContractArtifact } = await import('@aztec/noir-contracts.js/Token');
+  const { TokenContract, TokenContractArtifact } = await import('../../contracts/target/Token');
   const { AMMContract, AMMContractArtifact } = await import('../../contracts/target/AMM');
 
   // Determine subscription FPC for sponsored swaps
@@ -540,6 +540,73 @@ export async function executeDrip(
 }
 
 /**
+ * Execute an offchain token transfer.
+ * Sends tokens privately with offchain note delivery, self-delivers the sender's
+ * change note, and returns the recipient's offchain messages for link encoding.
+ */
+export async function executeTransferOffchain(
+  network: NetworkConfig,
+  contracts: SwapContracts,
+  tokenKey: 'gregoCoin' | 'gregoCoinPremium',
+  fromAddress: AztecAddress,
+  recipient: AztecAddress,
+  amount: bigint,
+): Promise<{ receipt: TxReceipt; offchainMessages: OffchainMessage[] }> {
+  const subFPC = network.subscriptionFPC;
+  if (!subFPC) {
+    throw new Error('No subscriptionFPC configured for this network');
+  }
+
+  const fpc = contracts.fpc;
+
+  const token = contracts[tokenKey];
+
+  const authwitNonce = Fr.random();
+  const call = await token.methods
+    .transfer_in_private_deliver_offchain(fromAddress, recipient, amount, authwitNonce)
+    .getFunctionCall();
+
+  const configIndex = subFPC.functions[token.address.toString()]?.[call.selector.toString()];
+  if (configIndex == null) {
+    throw new Error(
+      `No subscription config found for token ${token.address.toString()} selector ${call.selector.toString()}`,
+    );
+  }
+
+  const subscribed = hasSubscription(subFPC.address, configIndex, fromAddress.toString());
+
+  let txResult: { receipt: TxReceipt; offchainMessages: OffchainMessage[] };
+  if (subscribed) {
+    txResult = await fpc.helpers.sponsor({ call, configIndex, userAddress: fromAddress });
+  } else {
+    txResult = await fpc.helpers.subscribe({ call, configIndex, userAddress: fromAddress });
+    markSubscribed(subFPC.address, configIndex, fromAddress.toString());
+  }
+
+  const { receipt, offchainMessages } = txResult;
+
+  // Self-deliver sender's change note (manual until F-324 lands)
+  const senderMessages = offchainMessages.filter((msg: OffchainMessage) => msg.recipient.equals(fromAddress));
+  if (senderMessages.length > 0) {
+    await token.methods
+      .offchain_receive(
+        senderMessages.map((msg: OffchainMessage) => ({
+          ciphertext: msg.payload,
+          recipient: fromAddress,
+          tx_hash: receipt.txHash.hash,
+          anchor_block_timestamp: msg.anchorBlockTimestamp,
+        })),
+      )
+      .simulate({ from: fromAddress });
+  }
+
+  // Filter and return recipient's messages for link encoding
+  const recipientMessages = offchainMessages.filter((msg: OffchainMessage) => msg.recipient.equals(recipient));
+
+  return { receipt, offchainMessages: recipientMessages };
+}
+
+/**
  * Parses a drip error into a user-friendly message
  */
 export function parseDripError(error: unknown): string {
@@ -563,4 +630,16 @@ export function parseDripError(error: unknown): string {
   }
 
   return message;
+}
+
+/**
+ * Parses a send (offchain transfer) error into a user-friendly message
+ */
+export function parseSendError(error: unknown): string {
+  if (!(error instanceof Error)) return 'Send failed. Please try again.';
+  const msg = error.message;
+  if (msg.includes('Balance too low')) return 'Insufficient token balance';
+  if (msg.includes('User denied') || msg.includes('rejected')) return 'Transaction was rejected in wallet';
+  if (msg.includes('invalid') && msg.includes('address')) return 'Invalid recipient address';
+  return msg;
 }

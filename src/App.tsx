@@ -1,10 +1,14 @@
-import { ThemeProvider, CssBaseline, Container, Box, Typography } from '@mui/material';
+import { useState, useEffect } from 'react';
+import { ThemeProvider, CssBaseline, Container, Box, Typography, Tabs, Tab, Snackbar } from '@mui/material';
 import { theme } from './theme';
 import { GregoSwapLogo } from './components/GregoSwapLogo';
 import { WalletChip } from './components/WalletChip';
 import { NetworkSwitcher } from './components/NetworkSwitcher';
 import { FooterInfo } from './components/FooterInfo';
 import { SwapContainer } from './components/swap';
+import { SendContainer } from './components/send/SendContainer';
+import { ClaimPage } from './components/claim/ClaimPage';
+import { isClaimRoute } from './services/offchainLinkService';
 import { useWallet } from './contexts/wallet';
 import { useOnboarding } from './contexts/onboarding';
 import { OnboardingModal } from './components/OnboardingModal';
@@ -20,17 +24,30 @@ const ProfilePanel = import.meta.env.DEV
   : null;
 
 export function App() {
+  const [activeTab, setActiveTab] = useState(0);
+  const [addressCopied, setAddressCopied] = useState(false);
+  const [onClaimRoute, setOnClaimRoute] = useState(isClaimRoute);
   const { disconnectWallet, setCurrentAddress, currentAddress, error: walletError, isLoading: walletLoading } = useWallet();
   const { isOnboardingModalOpen, startOnboarding, resetOnboarding, status: onboardingStatus } = useOnboarding();
 
+  // Re-evaluate the claim route whenever the URL hash changes so that pasting a claim
+  // link into an already-loaded tab (or clicking an in-app link) routes correctly.
+  useEffect(() => {
+    const handler = () => setOnClaimRoute(isClaimRoute());
+    window.addEventListener('hashchange', handler);
+    return () => window.removeEventListener('hashchange', handler);
+  }, []);
+
   const isOnboarded = onboardingStatus === 'completed';
 
-  const handleWalletClick = () => {
-    // If already onboarded, start a new onboarding flow to change wallet
+  const handleWalletClick = async () => {
+    // If connected, copy the address. Otherwise start onboarding.
     if (isOnboarded && currentAddress) {
-      resetOnboarding();
+      await navigator.clipboard.writeText(currentAddress.toString());
+      setAddressCopied(true);
+      return;
     }
-    startOnboarding(); // Start onboarding when clicked from wallet chip
+    startOnboarding();
   };
 
   const handleDisconnect = async () => {
@@ -75,63 +92,97 @@ export function App() {
           onClick={handleWalletClick}
           onDisconnect={handleDisconnect}
         />
+        <Snackbar
+          open={addressCopied}
+          autoHideDuration={2000}
+          onClose={() => setAddressCopied(false)}
+          message="Address copied!"
+        />
 
         <Container maxWidth="sm" sx={{ position: 'relative', zIndex: 1 }}>
-          {/* Header */}
-          <Box sx={{ textAlign: 'center', mb: 6, mt: 4 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-              <GregoSwapLogo height={56} />
-            </Box>
-            <Typography variant="body1" color="text.secondary">
-              Swap GregoCoin for GregoCoinPremium
-            </Typography>
-          </Box>
-
-          {/* Swap Interface */}
-          <SwapContainer />
-
-          {/* Wallet Error Display */}
-          {walletError && (
-            <Box sx={{ mt: 3 }}>
-              <Box
-                sx={{
-                  p: 3,
-                  backgroundColor: 'rgba(211, 47, 47, 0.1)',
-                  border: '1px solid rgba(211, 47, 47, 0.3)',
-                  borderRadius: 1,
-                }}
-              >
-                <Typography variant="h6" color="error" sx={{ mb: 1, fontWeight: 600 }}>
-                  Wallet Connection Error
-                </Typography>
-                <Typography variant="body2" color="error" sx={{ whiteSpace: 'pre-line' }}>
-                  {walletError}
+          {onClaimRoute ? (
+            <ClaimPage
+              onClaimComplete={() => {
+                setActiveTab(1); // land on the Send tab after claiming
+                window.location.hash = '';
+              }}
+            />
+          ) : (
+            <>
+              {/* Header */}
+              <Box sx={{ textAlign: 'center', mb: 6, mt: 4 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+                  <GregoSwapLogo height={56} />
+                </Box>
+                <Typography variant="body1" color="text.secondary">
+                  Swap GregoCoin for GregoCoinPremium
                 </Typography>
               </Box>
-            </Box>
-          )}
 
-          {/* Loading Display */}
-          {walletLoading && !walletError && (
-            <Box sx={{ mt: 3 }}>
-              <Box
+              {/* Tab Bar */}
+              <Tabs
+                value={activeTab}
+                onChange={(_, value) => setActiveTab(value)}
+                centered
                 sx={{
-                  p: 3,
-                  backgroundColor: 'rgba(212, 255, 40, 0.05)',
-                  border: '1px solid rgba(212, 255, 40, 0.2)',
-                  borderRadius: 1,
-                  textAlign: 'center',
+                  mb: 3,
+                  '& .MuiTab-root': { color: 'text.secondary', fontWeight: 600 },
+                  '& .Mui-selected': { color: 'primary.main' },
+                  '& .MuiTabs-indicator': { backgroundColor: 'primary.main' },
                 }}
               >
-                <Typography variant="body2" color="text.secondary">
-                  Connecting to network...
-                </Typography>
-              </Box>
-            </Box>
-          )}
+                <Tab label="Swap" />
+                <Tab label="Send" />
+              </Tabs>
 
-          {/* Footer Info */}
-          <FooterInfo />
+              {/* Tab Content */}
+              {activeTab === 0 && <SwapContainer />}
+              {activeTab === 1 && <SendContainer />}
+
+              {/* Wallet Error Display */}
+              {walletError && (
+                <Box sx={{ mt: 3 }}>
+                  <Box
+                    sx={{
+                      p: 3,
+                      backgroundColor: 'rgba(211, 47, 47, 0.1)',
+                      border: '1px solid rgba(211, 47, 47, 0.3)',
+                      borderRadius: 1,
+                    }}
+                  >
+                    <Typography variant="h6" color="error" sx={{ mb: 1, fontWeight: 600 }}>
+                      Wallet Connection Error
+                    </Typography>
+                    <Typography variant="body2" color="error" sx={{ whiteSpace: 'pre-line' }}>
+                      {walletError}
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
+
+              {/* Loading Display */}
+              {walletLoading && !walletError && (
+                <Box sx={{ mt: 3 }}>
+                  <Box
+                    sx={{
+                      p: 3,
+                      backgroundColor: 'rgba(212, 255, 40, 0.05)',
+                      border: '1px solid rgba(212, 255, 40, 0.2)',
+                      borderRadius: 1,
+                      textAlign: 'center',
+                    }}
+                  >
+                    <Typography variant="body2" color="text.secondary">
+                      Connecting to network...
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
+
+              {/* Footer Info */}
+              <FooterInfo />
+            </>
+          )}
         </Container>
       </Box>
 

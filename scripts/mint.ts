@@ -11,7 +11,7 @@
 import fs from 'fs';
 import path from 'path';
 import { AztecAddress } from '@aztec/stdlib/aztec-address';
-import { TokenContract } from '@aztec/noir-contracts.js/Token';
+import { TokenContract, TokenContractArtifact } from '../contracts/target/Token.ts';
 import { BatchCall } from '@aztec/aztec.js/contracts';
 import { parseNetwork, parseAddressList, NETWORK_URLS, setupWallet, getOrCreateDeployer } from './utils.ts';
 
@@ -57,7 +57,6 @@ async function main() {
   const gregoCoinAddress = AztecAddress.fromString(config.contracts.gregoCoin);
   const gregoCoinPremiumAddress = AztecAddress.fromString(config.contracts.gregoCoinPremium);
 
-  const { TokenContractArtifact } = await import('@aztec/noir-contracts.js/Token');
   const [gregoCoinInstance, gregoCoinPremiumInstance] = await Promise.all([
     wallet.getContractMetadata(gregoCoinAddress).then(m => m.instance),
     wallet.getContractMetadata(gregoCoinPremiumAddress).then(m => m.instance),
