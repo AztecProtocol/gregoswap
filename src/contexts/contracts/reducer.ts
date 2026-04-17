@@ -6,6 +6,7 @@
 import type { TokenContract } from '../../../contracts/target/Token';
 import type { AMMContract } from '../../../contracts/target/AMM';
 import type { ProofOfPasswordContract } from '../../../contracts/target/ProofOfPassword';
+import type { SubscriptionFPC } from '@gregojuice/contracts/subscription-fpc';
 import { createReducerHook, type ActionsFrom } from '../utils';
 
 // =============================================================================
@@ -17,6 +18,7 @@ export interface Contracts {
   gregoCoinPremium: TokenContract | null;
   amm: AMMContract | null;
   pop: ProofOfPasswordContract | null;
+  fpc: SubscriptionFPC | null;
 }
 
 export type ContractRegistrationStage = 'base' | 'drip';
@@ -32,6 +34,7 @@ export const initialContractsState: ContractsState = {
     gregoCoinPremium: null,
     amm: null,
     pop: null,
+    fpc: null,
   },
   isLoading: true,
 };

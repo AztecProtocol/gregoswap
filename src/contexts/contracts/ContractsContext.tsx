@@ -9,6 +9,7 @@ import type { Fr } from '@aztec/foundation/curves/bn254';
 import type { TxReceipt } from '@aztec/stdlib/tx';
 import type { AMMContract } from '../../../contracts/target/AMM';
 import type { OffchainMessage } from '@aztec/aztec.js/contracts';
+import type { SubscriptionFPC } from '@gregojuice/contracts/subscription-fpc';
 import { useWallet } from '../wallet';
 import { useNetwork } from '../network';
 import * as contractService from '../../services/contractService';
@@ -23,6 +24,7 @@ interface ContractsContextType {
 
   // Utility methods
   getAmm: () => AMMContract | null;
+  getFpc: () => SubscriptionFPC | null;
   getExchangeRate: () => Promise<number>;
   swap: (amountOut: number, amountInMax: number) => Promise<TxReceipt>;
   unsponsoredSwap: (amountOut: number, amountInMax: number) => Promise<TxReceipt>;
@@ -92,6 +94,11 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     return state.contracts.amm ?? null;
   }, [state.contracts.amm]);
 
+  // Get FPC wrapper instance (for hooks that need it)
+  const getFpc = useCallback((): SubscriptionFPC | null => {
+    return state.contracts.fpc ?? null;
+  }, [state.contracts.fpc]);
+
   // Get exchange rate
   const getExchangeRate = useCallback(async (): Promise<number> => {
     if (
@@ -110,6 +117,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         gregoCoin: state.contracts.gregoCoin,
         gregoCoinPremium: state.contracts.gregoCoinPremium,
         amm: state.contracts.amm,
+        fpc: state.contracts.fpc,
       },
       currentAddress,
     );
@@ -123,17 +131,18 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         !currentAddress ||
         !state.contracts.amm ||
         !state.contracts.gregoCoin ||
-        !state.contracts.gregoCoinPremium
+        !state.contracts.gregoCoinPremium ||
+        !state.contracts.fpc
       ) {
         throw new Error('Contracts not initialized');
       }
 
       return contractService.executeSponsoredSwap(
-        wallet,
         activeNetwork,
         state.contracts.amm,
         state.contracts.gregoCoin,
         state.contracts.gregoCoinPremium,
+        state.contracts.fpc,
         currentAddress,
         amountOut,
         amountInMax,
@@ -160,6 +169,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
           gregoCoin: state.contracts.gregoCoin,
           gregoCoinPremium: state.contracts.gregoCoinPremium,
           amm: state.contracts.amm,
+          fpc: state.contracts.fpc,
         },
         currentAddress,
         amountOut,
@@ -181,6 +191,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         gregoCoin: state.contracts.gregoCoin,
         gregoCoinPremium: state.contracts.gregoCoinPremium,
         amm: state.contracts.amm!,
+        fpc: state.contracts.fpc,
       },
       currentAddress,
     );
@@ -204,6 +215,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
         gregoCoin: state.contracts.gregoCoin,
         gregoCoinPremium: state.contracts.gregoCoinPremium,
         amm: state.contracts.amm,
+        fpc: state.contracts.fpc,
       },
       currentAddress,
     );
@@ -214,13 +226,20 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
   // Execute drip
   const drip = useCallback(
     async (password: string, recipient: AztecAddress): Promise<TxReceipt> => {
-      if (!wallet || !node || !state.contracts.pop) {
+      if (!wallet || !node || !state.contracts.pop || !state.contracts.fpc) {
         throw new Error('ProofOfPassword contract not initialized');
       }
 
-      return contractService.executeDrip(wallet, activeNetwork, state.contracts.pop, password, recipient);
+      return contractService.executeDrip(
+        wallet,
+        activeNetwork,
+        state.contracts.pop,
+        state.contracts.fpc,
+        password,
+        recipient,
+      );
     },
-    [wallet, activeNetwork, state.contracts.pop],
+    [wallet, activeNetwork, state.contracts.pop, state.contracts.fpc],
   );
 
   // Execute offchain transfer (send with link)
@@ -289,6 +308,7 @@ export function ContractsProvider({ children }: ContractsProviderProps) {
     registerBaseContracts,
     registerDripContracts,
     getAmm,
+    getFpc,
     getExchangeRate,
     swap,
     unsponsoredSwap,
