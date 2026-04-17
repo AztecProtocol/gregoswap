@@ -106,6 +106,17 @@ function wrapAllMethods(
   return () => restores.forEach(r => r());
 }
 
+/** Detect queue-like objects whose `get`/`put`/`process` are worker-loop
+ *  infrastructure, not application operations. Their blocking `get()` can
+ *  span seconds of idle time and pollute the profile. */
+function isQueueLike(obj: any): boolean {
+  try {
+    return typeof obj.get === 'function' && typeof obj.put === 'function';
+  } catch {
+    return false;
+  }
+}
+
 // ─── Profiler ────────────────────────────────────────────────────────────────
 
 class Profiler {
@@ -254,23 +265,41 @@ class Profiler {
       if (pxe.simulator) wrapped.add(pxe.simulator);
       this._cleanups.push(installSimulatorInterceptorFromPXE(pxe, this));
 
-      this.instrumentPxeInternals(pxe, wrapped);
+      this.instrumentInternals(pxe, wrapped, 3);
     }
   }
 
-  /** Walk PXE properties and wrap methods on internal services/stores. */
-  private instrumentPxeInternals(pxe: any, alreadyWrapped: Set<any>) {
-    for (const key of Object.getOwnPropertyNames(pxe)) {
+  /**
+   * Walk an object's properties and wrap methods on sub-objects.
+   * Recurses up to `depth` levels (default 2) to catch nested objects
+   * like `jobCoordinator.kvStore` whose `transactionAsync` needs its
+   * callback arg zone-bound for proper context propagation.
+   *
+   * Queue-like objects (BaseMemoryQueue, FifoQueue, etc.) are skipped:
+   * their `get`/`put`/`process` methods are worker-loop infrastructure
+   * that blocks for seconds waiting for items, not application operations.
+   */
+  private instrumentInternals(root: any, alreadyWrapped: Set<any>, depth = 2) {
+    if (depth <= 0) return;
+    for (const key of Object.getOwnPropertyNames(root)) {
       if (key.startsWith('_') || key === 'log') continue;
       let value: any;
-      try { value = pxe[key]; } catch { continue; }
+      try { value = root[key]; } catch { continue; }
       if (!value || typeof value !== 'object' || alreadyWrapped.has(value)) continue;
 
       const methods = collectMethods(value);
       if (methods.length === 0) continue;
 
+      // Skip queue-like objects — they have `get`+`put` (or `process`)
+      // and their blocking `get()` can span seconds of idle time.
+      if (isQueueLike(value)) {
+        alreadyWrapped.add(value);
+        continue;
+      }
+
       alreadyWrapped.add(value);
       this._cleanups.push(wrapAllMethods(value, 'store', this));
+      this.instrumentInternals(value, alreadyWrapped, depth - 1);
     }
   }
 
