@@ -51,7 +51,7 @@ export function SwapContainer() {
     dismissError: dismissSwapError,
   } = useSwap();
 
-  const subscriptionStatus = useSubscriptionStatus(isSwapping, swapPhase, dripPhase);
+  const subscriptionStatus = useSubscriptionStatus(swapPhase, dripPhase);
   const isBlocked = subscriptionStatus.kind === 'full' || subscriptionStatus.kind === 'depleted';
 
   // Drip success banner
@@ -108,7 +108,8 @@ export function SwapContainer() {
     }
   }, [onboardingStatus, refetchBalances]);
 
-  // Refetch balances when swap succeeds
+  // Batched refresh after swap or drip success — single wallet roundtrip for
+  // exchange rate + balances + subscription status
   useEffect(() => {
     if (swapPhase === 'success') {
       refetchBalances();

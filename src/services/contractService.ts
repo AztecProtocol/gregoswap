@@ -3,7 +3,7 @@
  * Pure functions for contract-related operations
  */
 
-import type { Wallet } from '@aztec/aztec.js/wallet';
+import type { BatchedMethod, Wallet, TxSimulationResultWithAppOffset } from '@aztec/aztec.js/wallet';
 import type { AztecNode } from '@aztec/aztec.js/node';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { AztecAddress as AztecAddressClass } from '@aztec/aztec.js/addresses';
@@ -11,10 +11,14 @@ import { Fr } from '@aztec/aztec.js/fields';
 import { FunctionSelector } from '@aztec/aztec.js/abi';
 import { BatchCall, getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
 import { poseidon2Hash } from '@aztec/foundation/crypto/poseidon';
+import { type FunctionCall, decodeFromAbi } from '@aztec/stdlib/abi';
+import { ExecutionPayload } from '@aztec/stdlib/tx';
+import { UtilityExecutionResult } from '@aztec/stdlib/tx';
 import type { TxReceipt } from '@aztec/stdlib/tx';
 import type { TokenContract } from '@aztec/noir-contracts.js/Token';
 import type { AMMContract } from '../../contracts/target/AMM';
 import type { ProofOfPasswordContract } from '../../contracts/target/ProofOfPassword';
+import { SubscriptionFPC } from '@gregojuice/contracts/subscription-fpc';
 import { BigDecimal } from '../utils/bigDecimal';
 import type { NetworkConfig } from '../config/networks';
 import type { OnboardingResult } from '../contexts/onboarding/reducer';
@@ -26,6 +30,7 @@ export interface SwapContracts {
   gregoCoin: TokenContract;
   gregoCoinPremium: TokenContract;
   amm: AMMContract;
+  fpc: SubscriptionFPC | null;
 }
 
 /**
@@ -33,6 +38,7 @@ export interface SwapContracts {
  */
 export interface DripContracts {
   pop: ProofOfPasswordContract;
+  fpc: SubscriptionFPC | null;
 }
 
 /**
@@ -138,7 +144,10 @@ export async function registerSwapContracts(
   const gregoCoinPremium = TokenContract.at(gregoCoinPremiumAddress, wallet);
   const amm = AMMContract.at(ammAddress, wallet);
 
-  return { gregoCoin, gregoCoinPremium, amm };
+  // Instantiate FPC wrapper if configured
+  const fpc = subFPC && fpcAddress ? SubscriptionFPC.at(fpcAddress, wallet) : null;
+
+  return { gregoCoin, gregoCoinPremium, amm, fpc };
 }
 
 /**
@@ -206,7 +215,11 @@ export async function registerDripContracts(
   // Instantiate the ProofOfPassword contract
   const pop = ProofOfPasswordContract.at(popAddress, wallet);
 
-  return { pop };
+  // Instantiate FPC wrapper if configured
+  const fpcAddr = subFPC ? AztecAddressClass.fromString(subFPC.address) : undefined;
+  const fpc = fpcAddr ? SubscriptionFPC.at(fpcAddr, wallet) : null;
+
+  return { pop, fpc };
 }
 
 /**
@@ -339,11 +352,11 @@ function markSubscribed(fpcAddress: string, configIndex: number, userAddress: st
  * Uses subscribe on first call, sponsor on subsequent calls.
  */
 export async function executeSponsoredSwap(
-  wallet: Wallet,
   network: NetworkConfig,
   amm: SwapContracts['amm'],
   gregoCoin: SwapContracts['gregoCoin'],
   gregoCoinPremium: SwapContracts['gregoCoinPremium'],
+  fpc: SubscriptionFPC,
   userAddress: AztecAddress,
   amountOut: number,
   amountInMax: number,
@@ -371,12 +384,6 @@ export async function executeSponsoredSwap(
       `No subscription config found for AMM ${amm.address.toString()} selector ${call.selector.toString()}`,
     );
   }
-
-  const fpcAddress = AztecAddressClass.fromString(subFPC.address);
-  const { SubscriptionFPCContract } = await import('@gregojuice/contracts/artifacts/SubscriptionFPC');
-  const { SubscriptionFPC } = await import('@gregojuice/contracts/subscription-fpc');
-  const rawFPC = SubscriptionFPCContract.at(fpcAddress, wallet);
-  const fpc = new SubscriptionFPC(rawFPC);
 
   const subscribed = hasSubscription(subFPC.address, configIndex, userAddress.toString());
 
@@ -422,12 +429,12 @@ export async function executeUnsponsoredSwap(
 }
 
 export type SubscriptionStatusKind =
-  | 'loading'    // query in flight
-  | 'no_fpc'     // no FPC configured for this network — hide everything
-  | 'sponsored'  // user not yet subscribed, slots available — first swap will be free
-  | 'active'     // user has subscription with uses remaining — swap is free
-  | 'full'       // no slots left, user never subscribed — must bridge
-  | 'depleted';  // user's uses exhausted — must bridge
+  | 'loading' // query in flight
+  | 'no_fpc' // no FPC configured for this network — hide everything
+  | 'sponsored' // user not yet subscribed, slots available — first swap will be free
+  | 'active' // user has subscription with uses remaining — swap is free
+  | 'full' // no slots left, user never subscribed — must bridge
+  | 'depleted'; // user's uses exhausted — must bridge
 
 export interface SubscriptionStatus {
   kind: SubscriptionStatusKind;
@@ -440,13 +447,13 @@ export interface SubscriptionStatus {
  * Returns the status kind based on available slots and user subscription state.
  */
 export async function querySubscriptionStatus(
-  wallet: Wallet,
   network: NetworkConfig,
   amm: SwapContracts['amm'],
   userAddress: AztecAddress,
+  fpc: SubscriptionFPC | null,
 ): Promise<SubscriptionStatus> {
   const subFPC = network.subscriptionFPC;
-  if (!subFPC) return { kind: 'no_fpc' };
+  if (!subFPC || !fpc) return { kind: 'no_fpc' };
 
   // Derive configIndex + selector from the AMM's function map — take the first entry
   const ammFunctions = subFPC.functions[amm.address.toString()];
@@ -458,15 +465,11 @@ export async function querySubscriptionStatus(
   const selector = FunctionSelector.fromString(selectorHex);
   const configId = await poseidon2Hash([amm.address.toField(), selector.toField(), new Fr(configIndex)]);
 
-  const fpcAddress = AztecAddressClass.fromString(subFPC.address);
-  const { SubscriptionFPCContract } = await import('@gregojuice/contracts/artifacts/SubscriptionFPC');
-  const rawFPC = SubscriptionFPCContract.at(fpcAddress, wallet);
-
   // SlotNote is owned by the FPC — must simulate from fpc.address
   // SubscriptionNote is owned by the user — must simulate from userAddress
   const [{ result: slotsResult }, { result: subInfoResult }] = await Promise.all([
-    rawFPC.methods.count_available_slots(configId).simulate({ from: fpcAddress }),
-    rawFPC.methods.get_subscription_info(userAddress, configId).simulate({ from: userAddress }),
+    fpc.methods.count_available_slots(configId).simulate({ from: fpc.address }),
+    fpc.methods.get_subscription_info(userAddress, configId).simulate({ from: userAddress }),
   ]);
 
   const availableSlots = Number(slotsResult);
@@ -510,6 +513,7 @@ export async function executeDrip(
   wallet: Wallet,
   network: NetworkConfig,
   pop: ProofOfPasswordContract,
+  fpc: SubscriptionFPC,
   password: string,
   recipient: AztecAddress,
 ): Promise<TxReceipt> {
@@ -523,12 +527,6 @@ export async function executeDrip(
   if (configIndex == null) {
     throw new Error(`No subscription config found for ${pop.address.toString()} selector ${call.selector.toString()}`);
   }
-
-  const fpcAddress = AztecAddressClass.fromString(subFPC.address);
-  const { SubscriptionFPCContract } = await import('@gregojuice/contracts/artifacts/SubscriptionFPC');
-  const { SubscriptionFPC } = await import('@gregojuice/contracts/subscription-fpc');
-  const rawFPC = SubscriptionFPCContract.at(fpcAddress, wallet);
-  const fpc = new SubscriptionFPC(rawFPC);
 
   const accounts = await wallet.getAccounts();
   const userAddress = accounts[0]?.item ?? recipient;

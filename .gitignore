@@ -24,6 +24,7 @@ dist-ssr
 *.sw?
 
 .yarn/*
+!.yarn/patches
 !.yarn/releases
 vite.config.ts.*
 *.module.css.d.ts
