@@ -162,6 +162,13 @@ export default defineConfig(({ command, mode }) => {
       alias: localAztecAliases,
     },
     server: {
+      // Bind on 0.0.0.0 so a tunnel (ngrok, cloudflared) or same-network device
+      // (e.g. iPhone with mkcert-trusted HTTPS) can reach the dev server.
+      host: true,
+      // Accept Host headers from tunnel providers without needing per-URL config.
+      // Wildcards cover rotating ngrok-free subdomains; trycloudflare.com covers
+      // ephemeral Cloudflare tunnels. Tighten if you want to restrict further.
+      allowedHosts: ['.ngrok-free.app', '.ngrok.app', '.trycloudflare.com'],
       // Headers needed for bb WASM to work in multithreaded mode
       headers: {
         'Cross-Origin-Opener-Policy': 'same-origin',
