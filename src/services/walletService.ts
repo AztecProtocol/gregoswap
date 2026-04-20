@@ -7,6 +7,9 @@ import { createAztecNodeClient, type AztecNode } from '@aztec/aztec.js/node';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { ChainInfo } from '@aztec/aztec.js/account';
 import { Fr } from '@aztec/aztec.js/fields';
+import { createLogger } from '@aztec/foundation/log';
+import { AztecSQLiteOPFSStore } from '@aztec/kv-store/sqlite-opfs';
+import { registerSqliteInspectors } from '../utils/sqliteInspector';
 import {
   WalletManager,
   type WalletProvider,
@@ -40,7 +43,33 @@ export function createNodeClient(nodeUrl: string): AztecNode {
 export async function createEmbeddedWallet(
   node: AztecNode,
 ): Promise<{ wallet: EmbeddedWallet; address: AztecAddress }> {
-  const wallet = await EmbeddedWallet.create(node, { pxeConfig: { proverEnabled: true } });
+  // Both PXE state and the wallet's own DB go on SQLite-OPFS. Each store needs a
+  // distinct OPFS pool directory because SAH Pool acquires an exclusive lock on
+  // its directory — one shared directory would collide in a single tab. The
+  // rollup address scopes the DB names so switching networks doesn't
+  // cross-contaminate.
+  const l1Contracts = await node.getL1ContractAddresses();
+  const rollup = l1Contracts.rollupAddress.toString();
+  const pxeStore = await AztecSQLiteOPFSStore.open(
+    createLogger('pxe:data:sqlite-opfs'),
+    `pxe_data_${rollup}`,
+    false,
+    `.aztec-kv-pxe-${rollup}`,
+  );
+  const walletStore = await AztecSQLiteOPFSStore.open(
+    createLogger('wallet:data:sqlite-opfs'),
+    `wallet_data_${rollup}`,
+    false,
+    `.aztec-kv-wallet-${rollup}`,
+  );
+  const wallet = await EmbeddedWallet.create(node, {
+    pxe: { proverEnabled: true, store: pxeStore },
+    walletDb: { store: walletStore },
+  });
+  if (import.meta.env.DEV) {
+    // Expose dev-only inspectors at `window.__aztecStores`. See sqliteInspector.ts.
+    registerSqliteInspectors({ pxe: pxeStore, wallet: walletStore });
+  }
   let accountManager = await wallet.loadStoredAccount();
   if (!accountManager) {
     accountManager = await wallet.createInitializerlessAccount();

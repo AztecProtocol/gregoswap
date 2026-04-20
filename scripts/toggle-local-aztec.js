@@ -62,6 +62,7 @@ const PACKAGE_MAPPINGS = {
   "@aztec/test-wallet": "yarn-project/test-wallet",
   "@aztec/validator-client": "yarn-project/validator-client",
   "@aztec/wallet-sdk": "yarn-project/wallet-sdk",
+  "@aztec/wallets": "yarn-project/wallets",
   "@aztec/world-state": "yarn-project/world-state",
 };
 
@@ -71,6 +72,10 @@ const VITE_FS_ALLOW_PATHS = [
   "noir/packages/noirc_abi/web",
   "noir/packages/acvm_js/web",
   "barretenberg/ts/dest/browser",
+  // kv-store's sqlite-opfs backend runs a Web Worker served from dest/; dep of @sqlite.org/sqlite-wasm
+  // is a transitive that link: doesn't surface into the consumer's node_modules.
+  "yarn-project/kv-store",
+  "yarn-project/node_modules/@sqlite.org/sqlite-wasm",
 ];
 
 function savePath(aztecPath) {
