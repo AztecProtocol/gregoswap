@@ -62,15 +62,32 @@ const PACKAGE_MAPPINGS = {
   "@aztec/test-wallet": "yarn-project/test-wallet",
   "@aztec/validator-client": "yarn-project/validator-client",
   "@aztec/wallet-sdk": "yarn-project/wallet-sdk",
+  "@aztec/wallets": "yarn-project/wallets",
   "@aztec/world-state": "yarn-project/world-state",
 };
 
-// Paths within aztec-packages that need to be allowed in vite's fs.allow
+// Paths within aztec-packages that need to be allowed in vite's fs.allow.
+//
+// Most entries point at built-output directories of workspace packages — those
+// packages live in the source tree (yarn workspaces, not node_modules).
+//
+// The `yarn-project/node_modules/@sqlite.org/sqlite-wasm` entry is the odd one
+// out: @sqlite.org/sqlite-wasm is a real npm package, not a workspace, and it's
+// a transitive dep of @aztec/kv-store. Yarn's `link:` protocol doesn't install
+// the linked package's transitive deps into the consumer, so we can't resolve
+// it from gregoswap's own node_modules. Instead, we resolve it from aztec-
+// packages's hoisted install (yarn-project/node_modules) and Vite serves from
+// there. See the matching alias in vite.config.ts's loadLocalAztecAliases().
+// Declaring the package as a direct dep of gregoswap would not help: Vite
+// resolves the worker file's imports from the worker file's location (in
+// aztec-packages), not from the consumer's root.
 const VITE_FS_ALLOW_PATHS = [
   "yarn-project/noir-protocol-circuits-types/artifacts",
   "noir/packages/noirc_abi/web",
   "noir/packages/acvm_js/web",
   "barretenberg/ts/dest/browser",
+  "yarn-project/kv-store",
+  "yarn-project/node_modules/@sqlite.org/sqlite-wasm",
 ];
 
 function savePath(aztecPath) {

@@ -33,6 +33,7 @@
     "@aztec/constants": "v4.3.0-nightly.20260417",
     "@aztec/entrypoints": "v4.3.0-nightly.20260417",
     "@aztec/foundation": "v4.3.0-nightly.20260417",
+    "@aztec/kv-store": "v4.3.0-nightly.20260417",
     "@aztec/noir-contracts.js": "v4.3.0-nightly.20260417",
     "@aztec/protocol-contracts": "v4.3.0-nightly.20260417",
     "@aztec/pxe": "v4.3.0-nightly.20260417",
