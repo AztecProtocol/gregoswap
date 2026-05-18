@@ -36,6 +36,7 @@ export const initialWalletState: WalletState = {
 
 export const walletActions = {
   initStart: () => ({ type: 'wallet/INIT_START' as const }),
+  setNode: (node: AztecNode) => ({ type: 'wallet/SET_NODE' as const, node }),
   initEmbedded: (wallet: Wallet, node: AztecNode, address: AztecAddress) => ({
     type: 'wallet/INIT_EMBEDDED' as const,
     wallet,
@@ -64,6 +65,9 @@ export function walletReducer(state: WalletState, action: WalletAction): WalletS
     case 'wallet/INIT_START':
       return { ...state, isLoading: true, error: null };
 
+    case 'wallet/SET_NODE':
+      return { ...state, node: action.node };
+
     case 'wallet/INIT_EMBEDDED':
       return {
         ...state,
@@ -81,6 +85,8 @@ export function walletReducer(state: WalletState, action: WalletAction): WalletS
         wallet: action.wallet,
         currentAddress: null,
         isUsingEmbeddedWallet: false,
+        isLoading: false,
+        error: null,
       };
 
     case 'wallet/SET_ADDRESS':
@@ -100,6 +106,7 @@ export function walletReducer(state: WalletState, action: WalletAction): WalletS
         wallet: action.wallet,
         currentAddress: action.address,
         isUsingEmbeddedWallet: true,
+        isLoading: false,
       };
 
     case 'wallet/SET_ERROR':

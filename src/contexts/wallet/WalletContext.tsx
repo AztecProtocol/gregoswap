@@ -58,6 +58,9 @@ export function WalletProvider({ children }: WalletProviderProps) {
   const embeddedAddressRef = useRef<AztecAddress | null>(null);
   const previousNodeUrlRef = useRef<string | null>(null);
   const hasConnectedExternalWalletRef = useRef(false);
+  // Generation counter. A stale createEmbeddedWallet resolving after a network switch
+  // checks this to skip overwriting current state.
+  const initIdRef = useRef(0);
 
   // Provider tracking for disconnect handling
   const currentProviderRef = useRef<WalletProvider | null>(null);
@@ -80,24 +83,42 @@ export function WalletProvider({ children }: WalletProviderProps) {
 
     previousNodeUrlRef.current = nodeUrl;
     hasConnectedExternalWalletRef.current = false;
+    // Drop the previous network's embedded wallet so it can't be restored on the new network.
+    embeddedWalletRef.current = null;
+    embeddedAddressRef.current = null;
+    const initId = ++initIdRef.current;
 
     async function initializeWallet() {
       try {
         actions.initStart();
 
+        // Node is a property of the network, not the wallet. Publish it immediately so
+        // external-wallet flows don't have to wait on the slow embedded init.
         const node = walletService.createNodeClient(nodeUrl);
+        actions.setNode(node);
+
         const { wallet: embeddedWallet, address: defaultAccountAddress } = await walletService.createEmbeddedWallet(node);
 
-        // Store embedded wallet for later restoration
+        // Bail if a newer init has superseded this one (e.g. user switched network mid-init).
+        if (initId !== initIdRef.current) return;
+
         embeddedWalletRef.current = embeddedWallet;
         embeddedAddressRef.current = defaultAccountAddress;
 
-        // Only set embedded wallet as active if user hasn't connected an external wallet
         if (!hasConnectedExternalWalletRef.current) {
           actions.initEmbedded(embeddedWallet, node, defaultAccountAddress);
         }
       } catch (err) {
+        if (initId !== initIdRef.current) return;
+
         const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+
+        // External wallet already connected. Embedded init failures here are background
+        // noise; don't clobber the working session with a fatal error.
+        if (hasConnectedExternalWalletRef.current) {
+          console.warn('Embedded wallet init failed (external wallet active):', errorMessage);
+          return;
+        }
 
         const fullError =
           errorMessage.includes('timeout') || errorMessage.includes('unreachable')
@@ -238,10 +259,13 @@ export function WalletProvider({ children }: WalletProviderProps) {
     }
     currentProviderRef.current = null;
 
-    // Restore embedded wallet
+    // Restore embedded wallet if available; otherwise clear state so the UI doesn't
+    // keep showing the disconnected external wallet as active.
+    hasConnectedExternalWalletRef.current = false;
     if (embeddedWalletRef.current) {
-      hasConnectedExternalWalletRef.current = false;
       actions.restoreEmbedded(embeddedWalletRef.current, embeddedAddressRef.current);
+    } else {
+      actions.disconnect();
     }
   }, [actions]);
 
