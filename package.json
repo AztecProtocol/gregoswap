@@ -5,6 +5,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "postinstall": "node scripts/ci-env.js",
     "clean": "rm -rf ./dist .tsbuildinfo",
     "dev": "NODE_OPTIONS=--max_http_header_size=128000 vite",
     "build": "tsc -b && vite build",
